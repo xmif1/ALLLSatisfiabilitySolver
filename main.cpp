@@ -13,6 +13,7 @@
 using namespace Eigen;
 using namespace std;
 
+const ull P_2e64_m59 = 18446744073709551557;
 
 Clause* is_satisfied(const vector<Clause*>& clauses, VariablesArray* var_arr);
 VariablesArray* solve(const vector<Clause*>& clauses, ull n_vars);
@@ -32,9 +33,9 @@ int main(){
     }
 
     cout << endl;
-    cout << "V_NUM  = " << v_num << endl;
-    cout << "C_NUM  = " << c_num << endl;
-    cout << "L_NUM  = " << l_num << endl;
+    cout << "V_NUM = " << v_num << endl;
+    cout << "C_NUM = " << c_num << endl;
+    cout << "L_NUM = " << l_num << endl;
 
     l_c_num = new int[c_num];
     l_val = new int[l_num];
@@ -61,8 +62,12 @@ int main(){
         clauses.push_back(new Clause(literals, l_c_num[c]));
     }
 
-    MatrixXd* laplacian = getDependancyGraphLaplacian(clauses);
-    solve(clauses, v_num);
+    // MatrixXd* laplacian = getDependancyGraphLaplacian(clauses);
+    VariablesArray* sat = solve(clauses, v_num);
+
+    for(ull i = 1; i <= v_num; i++){
+        cout << "Var" << i << " = " << (sat->vars)[i] << endl;
+    }
 
     return 0;
 }
@@ -117,9 +122,15 @@ VariablesArray* solve(const vector<Clause*>& clauses, ull n_vars){
 }
 
 Clause* is_satisfied(const vector<Clause*>& clauses, VariablesArray* var_arr){
-    for(auto c: clauses){
-        if(c->is_not_satisfied(var_arr)){
-            return c;
+    ull c_num = clauses.size();
+    ull c = P_2e64_m59 % c_num;
+
+    for(ull i = 0; i < c_num; i++){
+        if((clauses.at(c))->is_not_satisfied(var_arr)){
+            return clauses.at(c);
+        }
+        else{
+            c = (c + P_2e64_m59) % c_num;
         }
     }
 
