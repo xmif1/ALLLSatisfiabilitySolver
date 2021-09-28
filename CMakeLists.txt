@@ -11,7 +11,9 @@ add_executable(ALLLSatisfiabilitySolver main.cpp
                                         core/VariablesArray.h
                                         core/Clause.cpp
                                         core/Clause.h
-                                        core/RandomBoolGenerator.h)
+                                        core/RandomBoolGenerator.h
+                                        sat_instance/SATInstance.cpp
+                                        sat_instance/SATInstance.h)
 target_link_libraries(ALLLSatisfiabilitySolver -lcnf_io)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -msse2") # specify compiler optimisations

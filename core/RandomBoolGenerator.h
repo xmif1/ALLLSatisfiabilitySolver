@@ -9,7 +9,8 @@
 
 #define UNLIKELY(x) __builtin_expect((x), 0)
 
-template <typename E, typename U = uint64_t> class RBG{
+template <typename E, typename U = uint64_t>
+class RBG{
     public:
         explicit RBG(E& engine){
             this->engine = engine;
