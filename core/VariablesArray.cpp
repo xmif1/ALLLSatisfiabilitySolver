@@ -9,13 +9,9 @@ VariablesArray::VariablesArray(ull n_vars){
     RBG<default_random_engine> rbg(engine);
 
     this->n_vars = n_vars;
-    vars = new bool[n_vars + 1];
+    vars = new bool[n_vars];
 
-    for(ull i = 1; i <= n_vars; i++){
+    for(ull i = 0; i < n_vars; i++){
         vars[i] = rbg.sample();
     }
-}
-
-bool& VariablesArray::operator[](lli index) const{
-    return (index < 0) ? vars[-index] : vars[index];
 }

@@ -13,7 +13,6 @@
 using namespace std;
 
 typedef unsigned long long ull;
-typedef long long int lli;
 
 class VariablesArray{
     public:
@@ -21,11 +20,6 @@ class VariablesArray{
         bool* vars;
 
         explicit VariablesArray(ull n_vars);
-
-        bool& operator[](lli index) const;
-
-    //private:
-
 };
 
 #endif //ALLLSATISFIABILITYSOLVER_VARIABLESARRAY_H

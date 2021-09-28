@@ -28,10 +28,10 @@ SATInstance::SATInstance(const string& cnf_file_name){
     l = 0;
     for(c = 0; c < c_num; c++){
         // l_c_num[c] = # of signed literals in clause c
-        lli* literals; literals = new lli[l_c_num[c]];
+        ull* literals; literals = new ull[l_c_num[c]];
 
         for(l_c = 0; l_c < l_c_num[c]; l_c++){
-            literals[l_c] = l_val[l];
+            literals[l_c] = (0 < l_val[l]) ? (2 * l_val[l]) - 2 : ((-2) * l_val[l]) - 1;
 
             l += 1;
         }
@@ -47,7 +47,7 @@ SATInstance::SATInstance(const string& cnf_file_name){
 bool SATInstance::dependent_clauses(Clause* c1, Clause* c2){
     for(int i = 0; i < c1->n_literals; i++){
         for(int j = 0; j < c2->n_literals; j++){
-            if((c1->literals)[i] == (c2->literals)[i] || (c1->literals)[i] == -((c2->literals)[i])){
+            if(((c1->literals)[i] >> 1) == ((c2->literals)[i] >> 1)){
                 return true;
             }
         }
@@ -95,8 +95,8 @@ VariablesArray* SATInstance::solve(){
 
     Clause* c = is_satisfied(var_arr);
     while(c){
-        for(lli i = 0; i < c->n_literals; i++){
-            (*var_arr)[(c->literals)[i]] = rbg.sample();
+        for(ull i = 0; i < c->n_literals; i++){
+            (var_arr->vars)[(c->literals)[i] >> 1] = rbg.sample();
         }
 
         c = is_satisfied(var_arr);

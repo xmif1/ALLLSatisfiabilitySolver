@@ -11,10 +11,10 @@
 
 class Clause{
     public:
-        lli* literals;
+        ull* literals;
         ull n_literals;
 
-        Clause(lli* literals, ull n_literals);
+        Clause(ull* literals, ull n_literals);
 
         bool is_not_satisfied(VariablesArray* var_arr) const;
 };
