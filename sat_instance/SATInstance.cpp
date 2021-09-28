@@ -40,6 +40,8 @@ SATInstance::SATInstance(const string& cnf_file_name){
     }
 
     n_vars = v_num;
+    n_clauses = c_num;
+    C = P_2e64_m59 % n_clauses;
 }
 
 bool SATInstance::dependent_clauses(Clause* c1, Clause* c2){
@@ -55,12 +57,11 @@ bool SATInstance::dependent_clauses(Clause* c1, Clause* c2){
 }
 
 MatrixXd* SATInstance::getDependancyGraphLaplacian(){
-    ull N = clauses.size();
-    auto laplacian = new MatrixXd(N, N);
+    auto laplacian = new MatrixXd(n_clauses, n_clauses);
     laplacian->setZero();
 
-    for(ull i = 0; i < N; i++){
-        for(ull j = i+1; j < N; j++){
+    for(ull i = 0; i < n_clauses; i++){
+        for(ull j = i+1; j < n_clauses; j++){
             if(dependent_clauses(clauses.at(i), clauses.at(j))){
                 (*laplacian)(i, j) = -1;
                 (*laplacian)(j, i) = -1;
@@ -74,15 +75,12 @@ MatrixXd* SATInstance::getDependancyGraphLaplacian(){
 }
 
 Clause* SATInstance::is_satisfied(VariablesArray* var_arr){
-    ull c_num = clauses.size();
-    ull c = P_2e64_m59 % c_num;
-
-    for(ull i = 0; i < c_num; i++){
-        if((clauses.at(c))->is_not_satisfied(var_arr)){
-            return clauses.at(c);
+    for(ull i = 0; i < n_clauses; i++){
+        if((clauses.at(C))->is_not_satisfied(var_arr)){
+            return clauses.at(C);
         }
         else{
-            c = (c + P_2e64_m59) % c_num;
+            C = (C + P_2e64_m59) % n_clauses;
         }
     }
 

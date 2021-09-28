@@ -34,6 +34,8 @@ class SATInstance{
 
     private:
         const ull P_2e64_m59 = 18446744073709551557;
+        ull n_clauses;
+        ull C;
 
         bool dependent_clauses(Clause* c1, Clause* c2);
 };
