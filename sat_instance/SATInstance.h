@@ -20,6 +20,11 @@
 using namespace Eigen;
 using namespace std;
 
+/* Represents a CNF SAT instance loaded from a DIMACS-formatted file, providing a number of functions to:
+ *   i. Generate the Laplacian of the (full) dependency graph between the clauses of the instance.
+ *  ii. Solve, by means of the Algorithmic Lovasz Local Lemma (Moser & Tardos, 2010), the SAT instance.
+ * iii. Check whether a variable assignment satisfies the SAT instance.
+ */
 class SATInstance{
     public:
         VariablesArray* sat = nullptr;
@@ -33,11 +38,14 @@ class SATInstance{
         Clause* is_satisfied(VariablesArray* var_arr);
 
     private:
+        // Largest prime number (2^64 - 59) that fits in a 64-bit register; note that this limits the number of clauses
+        // that can be in the SAT instance to 2^64 - 59 (which should be reasonably large enough...we hope...)
         const ull P_2e64_m59 = 18446744073709551557;
+
         ull n_clauses;
         ull C;
 
-        bool dependent_clauses(Clause* c1, Clause* c2);
+        static bool dependent_clauses(Clause* c1, Clause* c2);
 };
 
 

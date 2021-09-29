@@ -14,6 +14,8 @@ using namespace std;
 
 typedef unsigned long long ull;
 
+// Convenience class to represent the variables of a SAT instance, along with any related meta data. May be expanded
+// with additional functionality later on, such as partitioning or thread-safety related mechanism.
 class VariablesArray{
     public:
         ull n_vars;

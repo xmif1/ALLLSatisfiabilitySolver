@@ -9,7 +9,21 @@
 
 #define UNLIKELY(x) __builtin_expect((x), 0)
 
-template <typename E, typename U = uint64_t>
+typedef unsigned long long ull;
+
+/* Based on the implementation of Martin Ankerl, given at https://martin.ankerl.com/2018/12/08/fast-random-bool/.
+ *
+ * This class defines an efficient templated random boolean generator, where the template typename E corresponds to a
+ * (pseudo)-random number generator engine provided by the <random> header; for further details on these, kindly see the
+ * following reference: https://en.cppreference.com/w/cpp/numeric/random.
+ *
+ * While the <random> header provides a number of random integer generators from which we can stochastically generate 0
+ * or 1, these are largely inefficient since they are designed to cater for more general scenarios. Hence the need for
+ * a random boolean generator specifically optimised for this scenario. This is especially important since in the worst
+ * case of the Algorithmic Lovasz Local Lemma, the number of random boolean re-samples is exponential in the number of
+ * variables - hence we require every performance boost possible.
+ */
+template <typename E>
 class RBG{
     public:
         explicit RBG(E& engine){
@@ -17,8 +31,9 @@ class RBG{
         }
 
         bool sample(){
+            // In case m_rand is equal to initial seed, re-sample (inefficiently) using uniform_int_distribution.
             if(UNLIKELY(1 == m_rand)){
-                m_rand = std::uniform_int_distribution<U>{}(engine) | s_mask_left1;
+                m_rand = std::uniform_int_distribution<ull>{}(engine) | s_mask_left1;
             }
 
             bool const ret = m_rand & 1;
@@ -27,8 +42,8 @@ class RBG{
         }
 
     private:
-        static constexpr const U s_mask_left1 = U(1) << (sizeof(U) * 8 - 1);
-        U m_rand = 1;
+        static constexpr const ull s_mask_left1 = ull(1) << (sizeof(ull) * 8 - 1);
+        ull m_rand = 1;
         E engine;
 };
 
