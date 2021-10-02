@@ -33,7 +33,7 @@ class SATInstance{
 
         explicit SATInstance(const string& cnf_file_name);
 
-        MatrixXd* getDependancyGraphLaplacian();
+        pair<MatrixXd*, vector<vector<ull>*>*> getDependencyGraph();
         VariablesArray* solve();
         Clause* is_satisfied(VariablesArray* var_arr);
 

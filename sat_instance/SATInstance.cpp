@@ -83,16 +83,33 @@ bool SATInstance::dependent_clauses(Clause* c1, Clause* c2){
     return false;
 }
 
-// Utility function which check the dependencies between the clauses of the SAT instance and constructs the associated
-// Laplacian matrix L = D - A, as an Eigen::MatrixXd instance of dimension n_clauses by n_clauses.
-MatrixXd* SATInstance::getDependancyGraphLaplacian(){
+// Utility function which checks the dependencies between the clauses of the SAT instance and constructs the associated
+// Laplacian matrix L = D - A, as an Eigen::MatrixXd instance of dimension n_clauses by n_clauses, while also returning
+// the vertex sets of the components of the dependency graph.
+pair<MatrixXd*, vector<vector<ull>*>*> SATInstance::getDependencyGraph(){
     // Initialise a MatrixXd instance and initialise all the entries to zero.
     auto laplacian = new MatrixXd(n_clauses, n_clauses);
     laplacian->setZero();
 
-    // Iterate over every possible pair (order not important since matrix is symmetric) of clauses
-    for(ull i = 0; i < n_clauses; i++){
-        for(ull j = i+1; j < n_clauses; j++){
+    // Initialise a vector of ull vectors (each such vector being a vertex set of some component)
+    auto components = new vector<vector<ull>*>;
+
+    // Initialise a vector with the vertices (clauses) of the dependency graph the remain (initially all n_clauses)
+    vector<ull> remaining_vertices;
+    for(ull u = 0; u < n_clauses; u++){ remaining_vertices.push_back(u); }
+    auto v = remaining_vertices.begin(); // Iterator over the remaining_vertices vector...
+
+    // Lambda expression which recursively constructs the Laplacian and componets of the graph
+    function<void()> _get_component;
+    _get_component = [&](){
+        ull i = *v; // Current vertex (clause) pointed to by iterator v
+        (components->back())->push_back(i); // Add to current component
+        remaining_vertices.erase(v); // Remove from remaining_vertices vector
+
+        // Iterating over all the remaining vertices, find all the neighbours of v
+        for(auto u = remaining_vertices.begin(); u != remaining_vertices.end();){
+            ull j = *u; // Current vertex (clause) pointed to by iterator u
+
             // If the clauses i and j are dependent, then:
             if(dependent_clauses(clauses.at(i), clauses.at(j))){
                 (*laplacian)(i, j) = -1; // The entry (i, j) of the Laplacian is -1
@@ -100,10 +117,33 @@ MatrixXd* SATInstance::getDependancyGraphLaplacian(){
                 (*laplacian)(i, i) += 1; // The degree of i, i.e. the entry (i, i) of the Laplacian, increases by 1
                 (*laplacian)(j, j) += 1; // The degree of j, i.e. the entry (j, j) of the Laplacian, increases by 1
             } // Otherwise if independent, the entries (i, j) and (j, i) of the Laplacian are 0
+
+            ++u; // Increment iterator
         }
+
+        // Recursively call _get_component() on the neighbours of the vertex pointed to by the iterator v
+        for(; v != remaining_vertices.end();){
+            ull j = *v;
+
+            if((*laplacian)(i, j) == -1){
+                _get_component();
+            }
+            else{
+                ++v;
+            }
+        }
+
+        v = remaining_vertices.begin(); // Reset to beginning (otherwise some vertices will not be visited)
+    };
+
+    // Until remaining_vertices is empty, add a new component and call the _get_component() lambda function to find the
+    // next component and its adjacencies
+    while(v != remaining_vertices.end()){
+        components->push_back(new vector<ull>);
+        _get_component();
     }
 
-    return laplacian;
+    return {laplacian, components};
 }
 
 /* Checks whether the SAT instance is satisfied by a given variable assignment (specified as a VariablesArray instance),

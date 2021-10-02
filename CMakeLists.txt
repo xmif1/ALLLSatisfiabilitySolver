@@ -12,6 +12,7 @@ add_executable(ALLLSatisfiabilitySolver main.cpp
                                         core/Clause.cpp
                                         core/Clause.h
                                         core/RandomBoolGenerator.h
+                                        core/LaplacianLambdaCDP.h
                                         sat_instance/SATInstance.cpp
                                         sat_instance/SATInstance.h)
 target_link_libraries(ALLLSatisfiabilitySolver -lcnf_io)
