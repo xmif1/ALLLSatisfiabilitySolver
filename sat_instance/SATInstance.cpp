@@ -12,7 +12,7 @@
  *     is mapped to 2x + 1. For this encoding, we can obtain the variable associated with a literal by a single left
  *     shift i.e. the variable v associated with a literal l is: v = l >> 1.
  */
-SATInstance::SATInstance(const string& cnf_file_name){
+SATInstance::SATInstance(const string& cnf_file_name, vector<Clause*>* clauses){
     int l_num, c_num, v_num;
     int* l_c_num;
     int* l_val;
@@ -54,15 +54,12 @@ SATInstance::SATInstance(const string& cnf_file_name){
             l += 1;
         }
 
-        clauses.push_back(new Clause(literals, l_c_num[c]));
+        clauses->push_back(new Clause(literals, l_c_num[c]));
     }
 
     // Initialise internal state variables...
     n_vars = v_num; // Number of variables in SAT instance
-    n_clauses = c_num; // Number of clauses in SAT instance
-    C = P_2e64_m59 % n_clauses; // Starting seed for an LCG based index to the this.clauses vector, which pseudo-randomly
-                                // visits all the clauses exactly once with a period of n_clauses, allowing for efficient
-                                // 'shuffling' of the clauses vector.
+    var_arr = new VariablesArray(n_vars);
 }
 
 // Given two Clause instances, establishes whether they are dependent or not. The criteria of dependency is having one
@@ -84,15 +81,17 @@ bool SATInstance::dependent_clauses(Clause* c1, Clause* c2){
 }
 
 // Utility function which checks the dependencies between the clauses of the SAT instance and constructs the associated
-// Laplacian matrix L = D - A, as an Eigen::MatrixXd instance of dimension n_clauses by n_clauses, while also returning
-// the vertex sets of the components of the dependency graph.
-pair<MatrixXd*, vector<vector<ull>*>*> SATInstance::getDependencyGraph(){
+// Laplacian matrix L = D - A for each component, as an Eigen::MatrixXd instance, while also returning the vertex sets
+// of the components of the dependency graph.
+pair<vector<MatrixXd*>*, vector<vector<Clause*>*>*> SATInstance::getDependencyGraph(vector<Clause*>* clauses){
+    ull n_clauses = clauses->size();
+
     // Initialise a MatrixXd instance and initialise all the entries to zero.
     auto laplacian = new MatrixXd(n_clauses, n_clauses);
     laplacian->setZero();
 
-    // Initialise a vector of ull vectors (each such vector being a vertex set of some component)
-    auto components = new vector<vector<ull>*>;
+    auto component_laplacians = new vector<MatrixXd*>;
+    auto component_clauses = new vector<vector<Clause*>*>;
 
     // Initialise a vector with the vertices (clauses) of the dependency graph the remain (initially all n_clauses)
     vector<ull> remaining_vertices;
@@ -100,10 +99,10 @@ pair<MatrixXd*, vector<vector<ull>*>*> SATInstance::getDependencyGraph(){
     auto v = remaining_vertices.begin(); // Iterator over the remaining_vertices vector...
 
     // Lambda expression which recursively constructs the Laplacian and componets of the graph
-    function<void()> _get_component;
-    _get_component = [&](){
+    function<void(vector<ull>*)> _get_component;
+    _get_component = [&](vector<ull>* component){
         ull i = *v; // Current vertex (clause) pointed to by iterator v
-        (components->back())->push_back(i); // Add to current component
+        component->push_back(i); // Add to current component
         remaining_vertices.erase(v); // Remove from remaining_vertices vector
 
         // Iterating over all the remaining vertices, find all the neighbours of v
@@ -111,7 +110,7 @@ pair<MatrixXd*, vector<vector<ull>*>*> SATInstance::getDependencyGraph(){
             ull j = *u; // Current vertex (clause) pointed to by iterator u
 
             // If the clauses i and j are dependent, then:
-            if(dependent_clauses(clauses.at(i), clauses.at(j))){
+            if(dependent_clauses(clauses->at(i), clauses->at(j))){
                 (*laplacian)(i, j) = -1; // The entry (i, j) of the Laplacian is -1
                 (*laplacian)(j, i) = -1; // The entry (j, i) of the Laplacian is -1 by symmetry
                 (*laplacian)(i, i) += 1; // The degree of i, i.e. the entry (i, i) of the Laplacian, increases by 1
@@ -126,7 +125,7 @@ pair<MatrixXd*, vector<vector<ull>*>*> SATInstance::getDependencyGraph(){
             ull j = *v;
 
             if((*laplacian)(i, j) == -1){
-                _get_component();
+                _get_component(component);
             }
             else{
                 ++v;
@@ -139,56 +138,41 @@ pair<MatrixXd*, vector<vector<ull>*>*> SATInstance::getDependencyGraph(){
     // Until remaining_vertices is empty, add a new component and call the _get_component() lambda function to find the
     // next component and its adjacencies
     while(v != remaining_vertices.end()){
-        components->push_back(new vector<ull>);
-        _get_component();
+        auto component = new vector<ull>;
+        _get_component(component);
+
+        auto curr_laplacian = new MatrixXd(component->size(), component->size());
+        *curr_laplacian = (*laplacian)(*component, *component);
+        component_laplacians->push_back(curr_laplacian);
+
+        auto curr_clauses = new vector<Clause*>;
+        for(auto c: *component){
+            curr_clauses->push_back(clauses->at(c));
+        }
+
+        component_clauses->push_back(curr_clauses);
+        delete component;
     }
 
-    return {laplacian, components};
-}
+    delete laplacian;
 
-/* Checks whether the SAT instance is satisfied by a given variable assignment (specified as a VariablesArray instance),
- * by checking if each Clause instance in the clauses vector is satisfied. We iterate over the clauses vector in a pseudo
- * random manner, by means of an LCG. Note that we maintain the state of the LCG as a class variable.
- *
- * In the case that a clause is not satisfied, we return a pointer to the Clause instance. Otherwise, if every clause is
- * satisfied i.e. the SAT instance is satisfied, we return a nullptr.
- */
-Clause* SATInstance::is_satisfied(VariablesArray* var_arr){
-    for(ull i = 0; i < n_clauses; i++){ // For each clause...
-        // Fetch the clause specified at the (class variable) index C, and check if it is satisfied...
-        if((clauses.at(C))->is_not_satisfied(var_arr)){ // If it is not satisfied, return a ptr to the Clause instance
-            return clauses.at(C);
-        }
-        else{ /* Otherwise, calculate the next index C by means of the LCG; note that the LCG has a period of n_clauses
-               * and hence we iterate over each clause exactly once, in a non-linear fashion; this is equivalent to a
-               * pseudo-random shuffling of the clauses vector, and is required for optimal convergence of the Algorithmic
-               * Lovasz Local Lemma method.
-               */
-            C = (C + P_2e64_m59) % n_clauses;
-        }
-    }
-
-    return nullptr;
+    return {component_laplacians, component_clauses};
 }
 
 // SAT solver based on the Algorithmic Lovasz Local Lemma of Moser and Tardos (2010)
-VariablesArray* SATInstance::solve(){
-    default_random_engine engine(std::random_device{}()); // Get the system default random generator with a random seed
-    RBG<default_random_engine> rbg(engine); // Initialise an instance of a random boolean generator...
-
-    auto var_arr = new VariablesArray(n_vars);
-
-    Clause* c = is_satisfied(var_arr);
-    while(c){ // While there exists a clause c which is not satisfied...
-        // For every variable in the clause (obtained by left shifting by 1 the literal encoding), randomly re-sample
-        for(ull i = 0; i < c->n_literals; i++){
-            (var_arr->vars)[(c->literals)[i] >> 1] = rbg.sample();
-        }
-
-        c = is_satisfied(var_arr);
+VariablesArray* SATInstance::solve(vector<SubSATInstance*>* subInstances) const{
+    for(auto sat: *subInstances){
+        sat->solve();
     }
 
-    sat = var_arr;
-
     return var_arr;
+}
+
+vector<SubSATInstance*>* SATInstance::createSubSATInstances(vector<vector<Clause*>*>* components) const{
+    auto subInstance = new vector<SubSATInstance*>;
+    for(auto c: *components){
+        subInstance->push_back(new SubSATInstance(var_arr, c));
+    }
+
+    return subInstance;
 }

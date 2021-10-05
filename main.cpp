@@ -21,26 +21,30 @@ int main(int argc, char *argv[]){
     }
 
     // Initialise new SATInstance from specified CNF file
-    auto satInstance = new SATInstance(cnf_fpath);
+    auto clauses = new vector<Clause*>;
+    auto satInstance = new SATInstance(cnf_fpath, clauses);
 
     // Then get the Laplacian describing the dependency graph of the SAT instance, along the the vertex sets of the
     // components of the dependency graph
-    pair<MatrixXd*, vector<vector<ull>*>*> graph = satInstance->getDependencyGraph();
+    auto graph = SATInstance::getDependencyGraph(clauses);
+    auto subSATInstances = satInstance->createSubSATInstances(graph.second);
 
     // Export the Laplacian into a CSV file, for debugging and correctness checking purposes
-    string csv_fpath = cnf_fpath; csv_fpath.replace(csv_fpath.size() - 3, 3, "csv");
-    MatrixXd_to_CSV(graph.first, csv_fpath);
+    for(ull i = 0; i < (graph.first)->size(); i++){
+        string csv_fpath = cnf_fpath; csv_fpath.replace(csv_fpath.size() - 4, 4, "_" + to_string(i) + ".csv");
+        MatrixXd_to_CSV((graph.first)->at(i), csv_fpath);
+    }
 
     // Get the Laplacian Lambda Core Distance Partition for the dependency graph; note that we get the 'optimal' CDP for
     // every component; for logging purposes, we print the CDP blocks for each component
-    vector<cdp>* satCDPs = getLaplacianLambdaCDP(graph.first, graph.second);
-    cout << "# of components = " << satCDPs->size() << endl;
-    for(ull i = 0; i < satCDPs->size(); i++){
-        cout << "Component " << i + 1 << ": # of partitions = " << (satCDPs->at(i))->size() << endl;
-        for(ull j = 0; j < (satCDPs->at(i))->size(); j++){
+    satInstance->partition<MatrixXd*>(subSATInstances, graph.first, getLaplacianLambdaCDP);
+    cout << "# of components = " << subSATInstances->size() << endl;
+    for(ull i = 0; i < subSATInstances->size(); i++){
+        cout << "Component " << i + 1 << ": # of partitions = " << (subSATInstances->at(i))->clausePartition->size() << endl;
+        for(ull j = 0; j < (subSATInstances->at(i))->clausePartition->size(); j++){
             cout << "\tPartition " << j + 1 << ": ";
 
-            for(auto c: *(*(satCDPs->at(i))).at(j)){
+            for(auto c: *((subSATInstances->at(i))->clausePartition->at(j))){
                 cout << c << " ";
             }
 
@@ -49,7 +53,7 @@ int main(int argc, char *argv[]){
     }
 
     // Solve the SAT instance (using the Algorithmic Lovasz Local Lemma)
-    VariablesArray* sat = satInstance->solve();
+    VariablesArray* sat = satInstance->solve(subSATInstances);
 
     // Print the variable assignment for the solution
     for(ull i = 0; i < satInstance->n_vars; i++){

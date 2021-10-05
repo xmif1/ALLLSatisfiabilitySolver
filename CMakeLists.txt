@@ -14,7 +14,9 @@ add_executable(ALLLSatisfiabilitySolver main.cpp
                                         core/RandomBoolGenerator.h
                                         core/LaplacianLambdaCDP.h
                                         sat_instance/SATInstance.cpp
-                                        sat_instance/SATInstance.h)
+                                        sat_instance/SATInstance.h
+                                        sat_instance/SubSATInstance.cpp
+                                        sat_instance/SubSATInstance.h)
 target_link_libraries(ALLLSatisfiabilitySolver -lcnf_io)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -msse2 -DNDEBUG") # specify compiler optimisations
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -msse2 -DNDEBUG") # specify compiler optimisations
