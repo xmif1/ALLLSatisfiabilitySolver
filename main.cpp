@@ -3,6 +3,7 @@
 
 #include "core/LaplacianLambdaCDP.h"
 #include "sat_instance/SATInstance.h"
+#include <omp.h>
 
 void MatrixXd_to_CSV(MatrixXd* matrix, const string& fp);
 

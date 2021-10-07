@@ -1,0 +1,2 @@
+Archive of the original code by John Burkardt, originally distributed under the GNU LGPL license.
+For original source listings, kindly see: https://people.sc.fsu.edu/~jburkardt/cpp_src/cnf_io/cnf_io.html

@@ -7,7 +7,7 @@
 
 #include <random>
 
-#include <cnf_io.hpp>
+#include "../cnf_io/cnf_io.h"
 
 #include "SubSATInstance.h"
 #include "../core/RandomBoolGenerator.h"
