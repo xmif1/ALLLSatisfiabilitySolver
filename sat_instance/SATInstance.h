@@ -23,12 +23,14 @@ using namespace std;
 class SATInstance{
     public:
         ull n_vars;
+        ull n_literals;
+        ull n_clauses;
         VariablesArray* var_arr;
 
         SATInstance(const string& cnf_file_name, vector<Clause*>* clauses);
 
         VariablesArray* solve(vector<SubSATInstance*>* subInstances) const;
-        vector<SubSATInstance*>* createSubSATInstances(vector<vector<Clause*>*>* components) const;
+        vector<SubSATInstance*>* createSubSATInstances(vector<vector<Clause*>*>* components, ull parallel_resample = 0) const;
         static pair<vector<MatrixXd*>*, vector<vector<Clause*>*>*> getDependencyGraph(vector<Clause*>* clauses);
 
         template<typename T>

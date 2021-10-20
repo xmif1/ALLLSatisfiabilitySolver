@@ -4,6 +4,10 @@
 
 #include "SATInstance.h"
 
+#include <chrono>
+#include <ctime>
+#include <omp.h>
+
 /* Constructor for a SATInstance object, with the file path to a DIMACS formatted .cnf file accepted as input.
  * This constructor is responsible for:
  *  i. Loading meta data (number of variables, clauses etc) as well as reading the clauses from the specified .cnf file,
@@ -59,6 +63,8 @@ SATInstance::SATInstance(const string& cnf_file_name, vector<Clause*>* clauses){
 
     // Initialise internal state variables...
     n_vars = v_num; // Number of variables in SAT instance
+    n_clauses = c_num; // Number of clauses in SAT instance
+    n_literals = l_num; // Number of literals in SAT instance
     var_arr = new VariablesArray(n_vars);
 }
 
@@ -98,7 +104,7 @@ pair<vector<MatrixXd*>*, vector<vector<Clause*>*>*> SATInstance::getDependencyGr
     for(ull u = 0; u < n_clauses; u++){ remaining_vertices.push_back(u); }
     auto v = remaining_vertices.begin(); // Iterator over the remaining_vertices vector...
 
-    // Lambda expression which recursively constructs the Laplacian and componets of the graph
+    // Lambda expression which recursively constructs the Laplacian and components of the graph
     function<void(vector<ull>*)> _get_component;
     _get_component = [&](vector<ull>* component){
         ull i = *v; // Current vertex (clause) pointed to by iterator v
@@ -106,11 +112,11 @@ pair<vector<MatrixXd*>*, vector<vector<Clause*>*>*> SATInstance::getDependencyGr
         remaining_vertices.erase(v); // Remove from remaining_vertices vector
 
         // Iterating over all the remaining vertices, find all the neighbours of v
-        for(auto u = remaining_vertices.begin(); u != remaining_vertices.end();){
+        for(auto u = remaining_vertices.begin(); u != remaining_vertices.end();) {
             ull j = *u; // Current vertex (clause) pointed to by iterator u
 
             // If the clauses i and j are dependent, then:
-            if(dependent_clauses(clauses->at(i), clauses->at(j))){
+            if (dependent_clauses(clauses->at(i), clauses->at(j))) {
                 (*laplacian)(i, j) = -1; // The entry (i, j) of the Laplacian is -1
                 (*laplacian)(j, i) = -1; // The entry (j, i) of the Laplacian is -1 by symmetry
                 (*laplacian)(i, i) += 1; // The degree of i, i.e. the entry (i, i) of the Laplacian, increases by 1
@@ -161,17 +167,28 @@ pair<vector<MatrixXd*>*, vector<vector<Clause*>*>*> SATInstance::getDependencyGr
 
 // SAT solver based on the Algorithmic Lovasz Local Lemma of Moser and Tardos (2010)
 VariablesArray* SATInstance::solve(vector<SubSATInstance*>* subInstances) const{
-    for(auto sat: *subInstances){
-        sat->solve();
+    // Logging...
+    auto timestart = chrono::system_clock::to_time_t(chrono::system_clock::now());
+    cout << "Log " << ctime(&timestart) <<"\tStarting solve..." << endl;
+    auto start = chrono::high_resolution_clock::now();
+
+    #pragma omp parallel for default(none) shared(subInstances)
+    for(ull i = 0; i < subInstances->size(); i++){
+        subInstances->at(i)->solve();
     }
+
+    auto stop = chrono::high_resolution_clock::now();
+    auto duration = chrono::duration_cast<chrono::microseconds>(stop - start);
+    auto timeend = chrono::system_clock::to_time_t(chrono::system_clock::now());
+    cout << "Log " << ctime(&timeend) <<"\tCompleted solve...Duration: " << duration.count() << endl;
 
     return var_arr;
 }
 
-vector<SubSATInstance*>* SATInstance::createSubSATInstances(vector<vector<Clause*>*>* components) const{
+vector<SubSATInstance*>* SATInstance::createSubSATInstances(vector<vector<Clause*>*>* components, ull parallel_resample) const{
     auto subInstance = new vector<SubSATInstance*>;
     for(auto c: *components){
-        subInstance->push_back(new SubSATInstance(var_arr, c));
+        subInstance->push_back(new SubSATInstance(var_arr, c, parallel_resample));
     }
 
     return subInstance;

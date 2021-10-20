@@ -5,6 +5,8 @@
 #include "sat_instance/SATInstance.h"
 #include <omp.h>
 
+#define PARALLEL_RESAMPLE_LOWERBOUND 5
+
 void MatrixXd_to_CSV(MatrixXd* matrix, const string& fp);
 
 int main(int argc, char *argv[]){
@@ -28,7 +30,9 @@ int main(int argc, char *argv[]){
     // Then get the Laplacian describing the dependency graph of the SAT instance, along the the vertex sets of the
     // components of the dependency graph
     auto graph = SATInstance::getDependencyGraph(clauses);
-    auto subSATInstances = satInstance->createSubSATInstances(graph.second);
+    ull avg_literals_per_clause = (ull) (satInstance->n_literals / satInstance->n_clauses);
+    ull parallel_resample = (avg_literals_per_clause > PARALLEL_RESAMPLE_LOWERBOUND) ? avg_literals_per_clause : 0;
+    auto subSATInstances = satInstance->createSubSATInstances(graph.second, parallel_resample);
 
     // Export the Laplacian into a CSV file, for debugging and correctness checking purposes
     for(ull i = 0; i < (graph.first)->size(); i++){

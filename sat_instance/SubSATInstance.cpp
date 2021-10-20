@@ -6,9 +6,22 @@
 
 #include <utility>
 
-SubSATInstance::SubSATInstance(VariablesArray* variables, vector<Clause*>* clauses){
+SubSATInstance::SubSATInstance(VariablesArray* variables, vector<Clause*>* clauses, ull parallel_resample){
     this->var_arr = variables;
     this->clauses = clauses;
+    this->parallel_resample = parallel_resample;
+
+    ull max_clause_literals = 0;
+    for(auto c: *clauses){
+        if(c->n_literals > max_clause_literals){
+            max_clause_literals = c->n_literals;
+        }
+    }
+
+    for(ull i = 0; i < max_clause_literals; i++){
+        auto engine = new default_random_engine(std::random_device{}()); // Get the system default random generator with a random seed
+        rbg_ensemble.push_back(new RBG<default_random_engine>(*engine)); // Initialise an instance of a random boolean generator...
+    }
 
     n_clauses = (this->clauses)->size(); // Number of clauses in SAT instance
     C = P_2e64_m59 % n_clauses; // Starting seed for an LCG based index to the this.clauses vector, which pseudo-randomly
@@ -42,16 +55,26 @@ Clause* SubSATInstance::is_satisfied(){
 }
 
 void SubSATInstance::solve(){
-    default_random_engine engine(std::random_device{}()); // Get the system default random generator with a random seed
-    RBG<default_random_engine> rbg(engine); // Initialise an instance of a random boolean generator...
-
     Clause* c = is_satisfied();
-    while(c){ // While there exists a clause c which is not satisfied...
-        // For every variable in the clause (obtained by left shifting by 1 the literal encoding), randomly re-sample
-        for(ull i = 0; i < c->n_literals; i++){
-            (var_arr->vars)[(c->literals)[i] >> 1] = rbg.sample();
-        }
+    if(parallel_resample){
+        while(c){ // While there exists a clause c which is not satisfied...
+            // For every variable in the clause (obtained by left shifting by 1 the literal encoding), randomly re-sample
+            #pragma omp parallel for default(none) shared(c)
+            for(ull i = 0; i < c->n_literals; i++){
+                (var_arr->vars)[(c->literals)[i] >> 1] = (rbg_ensemble.at(i))->sample();
+            }
 
-        c = is_satisfied();
+            c = is_satisfied();
+        }
+    }
+    else{
+        while(c){ // While there exists a clause c which is not satisfied...
+            // For every variable in the clause (obtained by left shifting by 1 the literal encoding), randomly re-sample
+            for(ull i = 0; i < c->n_literals; i++){
+                (var_arr->vars)[(c->literals)[i] >> 1] = (rbg_ensemble.at(i))->sample();
+            }
+
+            c = is_satisfied();
+        }
     }
 }

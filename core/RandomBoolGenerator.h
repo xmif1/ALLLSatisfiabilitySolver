@@ -42,7 +42,7 @@ class RBG{
         }
 
     private:
-        static constexpr const ull s_mask_left1 = ull(1) << (sizeof(ull) * 8 - 1);
+        const ull s_mask_left1 = ull(1) << (sizeof(ull) * 8 - 1);
         ull m_rand = 1;
         E engine;
 };

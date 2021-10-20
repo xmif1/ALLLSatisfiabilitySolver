@@ -10,10 +10,10 @@
 #include <set>
 
 #include <Eigen/Dense>
+#include <omp.h>
 
 #include "../core/VariablesArray.h"
 #include "../core/Clause.h"
-
 
 using namespace Eigen;
 using namespace std;
@@ -26,7 +26,7 @@ class SubSATInstance{
         vector<Clause*>* clauses;
         VariablesArray* var_arr;
 
-        SubSATInstance(VariablesArray* variables, vector<Clause*>* clauses);
+        SubSATInstance(VariablesArray* variables, vector<Clause*>* clauses, ull parallel_resample = 0);
 
         void solve();
         Clause* is_satisfied();
@@ -41,6 +41,9 @@ class SubSATInstance{
         // that can be in the SAT instance to 2^64 - 59 (which should be reasonably large enough...we hope...)
         const ull P_2e64_m59 = 18446744073709551557;
 
+        vector<RBG<default_random_engine>*> rbg_ensemble;
+
+        ull parallel_resample;
         ull n_clauses;
         ull C;
 };
