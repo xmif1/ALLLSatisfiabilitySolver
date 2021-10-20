@@ -22,10 +22,12 @@ int main(int argc, char *argv[]){
         throw std::runtime_error("Too many parameters specified...exiting...");
     }
     else if(argc == 3 && strcmp(argv[1], "-p") == 0){
+        cnf_fpath = argv[2];
         parallel = true;
     }
-
-    cnf_fpath = argv[2];
+    else{
+        cnf_fpath = argv[1];
+    }
 
     // Initialise new SATInstance from specified CNF file
     auto clauses = new vector<Clause*>;
