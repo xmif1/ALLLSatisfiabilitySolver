@@ -10,18 +10,22 @@
 void MatrixXd_to_CSV(MatrixXd* matrix, const string& fp);
 
 int main(int argc, char *argv[]){
+    bool parallel = false;
+
     string cnf_fpath;
 
     // Option checking...
     if(argc <= 1){
         throw std::runtime_error("The filepath to the DIMACS formatted CNF SAT instance was not specified...exiting...");
     }
-    else if(argc > 2){
+    else if(argc > 3){
         throw std::runtime_error("Too many parameters specified...exiting...");
     }
-    else{
-        cnf_fpath = argv[1];
+    else if(argc == 3 && strcmp(argv[1], "-p") == 0){
+        parallel = true;
     }
+
+    cnf_fpath = argv[1];
 
     // Initialise new SATInstance from specified CNF file
     auto clauses = new vector<Clause*>;
@@ -31,7 +35,7 @@ int main(int argc, char *argv[]){
     // components of the dependency graph
     auto graph = SATInstance::getDependencyGraph(clauses);
     ull avg_literals_per_clause = (ull) (satInstance->n_literals / satInstance->n_clauses);
-    ull parallel_resample = (avg_literals_per_clause > PARALLEL_RESAMPLE_LOWERBOUND) ? avg_literals_per_clause : 0;
+    ull parallel_resample = (avg_literals_per_clause < PARALLEL_RESAMPLE_LOWERBOUND || !parallel) ? 0 : avg_literals_per_clause;
     auto subSATInstances = satInstance->createSubSATInstances(graph.second, parallel_resample);
 
     // Export the Laplacian into a CSV file, for debugging and correctness checking purposes
@@ -58,12 +62,12 @@ int main(int argc, char *argv[]){
     }
 
     // Solve the SAT instance (using the Algorithmic Lovasz Local Lemma)
-    VariablesArray* sat = satInstance->solve(subSATInstances);
+    VariablesArray* sat = satInstance->solve(subSATInstances, parallel);
 
     // Print the variable assignment for the solution
-    for(ull i = 0; i < satInstance->n_vars; i++){
-        cout << "Var" << i + 1 << " = " << (sat->vars)[i] << endl;
-    }
+//    for(ull i = 0; i < satInstance->n_vars; i++){
+//        cout << "Var" << i + 1 << " = " << (sat->vars)[i] << endl;
+//    }
 
     return 0;
 }

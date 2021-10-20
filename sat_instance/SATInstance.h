@@ -29,7 +29,7 @@ class SATInstance{
 
         SATInstance(const string& cnf_file_name, vector<Clause*>* clauses);
 
-        VariablesArray* solve(vector<SubSATInstance*>* subInstances) const;
+        VariablesArray* solve(vector<SubSATInstance*>* subInstances, bool parallel = true) const;
         vector<SubSATInstance*>* createSubSATInstances(vector<vector<Clause*>*>* components, ull parallel_resample = 0) const;
         static pair<vector<MatrixXd*>*, vector<vector<Clause*>*>*> getDependencyGraph(vector<Clause*>* clauses);
 

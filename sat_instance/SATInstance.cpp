@@ -166,13 +166,13 @@ pair<vector<MatrixXd*>*, vector<vector<Clause*>*>*> SATInstance::getDependencyGr
 }
 
 // SAT solver based on the Algorithmic Lovasz Local Lemma of Moser and Tardos (2010)
-VariablesArray* SATInstance::solve(vector<SubSATInstance*>* subInstances) const{
+VariablesArray* SATInstance::solve(vector<SubSATInstance*>* subInstances, bool parallel) const{
     // Logging...
     auto timestart = chrono::system_clock::to_time_t(chrono::system_clock::now());
     cout << "Log " << ctime(&timestart) <<"\tStarting solve..." << endl;
     auto start = chrono::high_resolution_clock::now();
 
-    #pragma omp parallel for default(none) shared(subInstances)
+    #pragma omp parallel for default(none) if(parallel) shared(subInstances)
     for(ull i = 0; i < subInstances->size(); i++){
         subInstances->at(i)->solve();
     }
