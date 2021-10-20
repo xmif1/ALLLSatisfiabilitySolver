@@ -25,7 +25,7 @@ int main(int argc, char *argv[]){
         parallel = true;
     }
 
-    cnf_fpath = argv[1];
+    cnf_fpath = argv[2];
 
     // Initialise new SATInstance from specified CNF file
     auto clauses = new vector<Clause*>;
