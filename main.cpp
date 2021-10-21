@@ -51,7 +51,7 @@ int main(int argc, char *argv[]){
     // Then get the Laplacian describing the dependency graph of the SAT instance, along the the vertex sets of the
     // components of the dependency graph
     auto graph = SATInstance::getDependencyGraph(clauses);
-    ull avg_literals_per_clause = (ull) (satInstance->n_literals / satInstance->n_clauses);
+    ull avg_literals_per_clause = ((ull) (satInstance->n_literals / satInstance->n_clauses)) + 1;
     ull parallel_resample = (avg_literals_per_clause < PARALLEL_RESAMPLE_LOWERBOUND || !parallel) ? 0 : avg_literals_per_clause;
     auto subSATInstances = satInstance->createSubSATInstances(graph.second, parallel_resample);
 
