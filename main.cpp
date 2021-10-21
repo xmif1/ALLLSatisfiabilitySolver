@@ -11,6 +11,7 @@ void MatrixXd_to_CSV(MatrixXd* matrix, const string& fp);
 
 int main(int argc, char *argv[]){
     bool parallel = false;
+    bool partition = false;
 
     string cnf_fpath;
 
@@ -18,15 +19,29 @@ int main(int argc, char *argv[]){
     if(argc <= 1){
         throw std::runtime_error("The filepath to the DIMACS formatted CNF SAT instance was not specified...exiting...");
     }
-    else if(argc > 3){
+    else if(argc > 4){
         throw std::runtime_error("Too many parameters specified...exiting...");
     }
     else if(argc == 3 && strcmp(argv[1], "-p") == 0){
         cnf_fpath = argv[2];
         parallel = true;
     }
-    else{
+    else if(argc == 3 && strcmp(argv[1], "-l") == 0){
+        cnf_fpath = argv[2];
+        partition = true;
+    }
+    else if(argc == 4 && ((strcmp(argv[1], "-l") == 0 && (strcmp(argv[2], "-p")) == 0) ||
+                          (strcmp(argv[1], "-p") == 0 && (strcmp(argv[2], "-l")) == 0))){
+
+        cnf_fpath = argv[3];
+        parallel = true;
+        partition = true;
+    }
+    else if(argc == 2){
         cnf_fpath = argv[1];
+    }
+    else{
+        throw std::runtime_error("Invalid options specified...exiting...");
     }
 
     // Initialise new SATInstance from specified CNF file
@@ -48,18 +63,20 @@ int main(int argc, char *argv[]){
 
     // Get the Laplacian Lambda Core Distance Partition for the dependency graph; note that we get the 'optimal' CDP for
     // every component; for logging purposes, we print the CDP blocks for each component
-    satInstance->partition<MatrixXd*>(subSATInstances, graph.first, getLaplacianLambdaCDP);
-    cout << "# of components = " << subSATInstances->size() << endl;
-    for(ull i = 0; i < subSATInstances->size(); i++){
-        cout << "Component " << i + 1 << ": # of partitions = " << (subSATInstances->at(i))->clausePartition->size() << endl;
-        for(ull j = 0; j < (subSATInstances->at(i))->clausePartition->size(); j++){
-            cout << "\tPartition " << j + 1 << ": ";
+    if(partition){
+        satInstance->partition<MatrixXd*>(subSATInstances, graph.first, getLaplacianLambdaCDP, parallel);
+        cout << "# of components = " << subSATInstances->size() << endl;
+        for(ull i = 0; i < subSATInstances->size(); i++){
+            cout << "Component " << i + 1 << ": # of partitions = " << (subSATInstances->at(i))->clausePartition->size() << endl;
+            for(ull j = 0; j < (subSATInstances->at(i))->clausePartition->size(); j++){
+                cout << "\tPartition " << j + 1 << ": ";
 
-            for(auto c: *((subSATInstances->at(i))->clausePartition->at(j))){
-                cout << c << " ";
+                for(auto c: *((subSATInstances->at(i))->clausePartition->at(j))){
+                    cout << c << " ";
+                }
+
+                cout << endl;
             }
-
-            cout << endl;
         }
     }
 

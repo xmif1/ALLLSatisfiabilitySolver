@@ -6,6 +6,7 @@
 #define ALLLSATISFIABILITYSOLVER_SATINSTANCE_H
 
 #include <random>
+#include <omp.h>
 
 #include "../cnf_io/cnf_io.h"
 
@@ -34,7 +35,8 @@ class SATInstance{
         static pair<vector<MatrixXd*>*, vector<vector<Clause*>*>*> getDependencyGraph(vector<Clause*>* clauses);
 
         template<typename T>
-        void partition(vector<SubSATInstance*>* subInstances, vector<T>* ts, blocks (*p)(T)){
+        void partition(vector<SubSATInstance*>* subInstances, vector<T>* ts, blocks (*p)(T), bool parallel = true){
+            #pragma omp parallel for default(none) if(parallel) shared(subInstances, ts, p)
             for(ull i = 0; i < subInstances->size(); i++){
                 (subInstances->at(i))->partition(ts->at(i), p);
             }

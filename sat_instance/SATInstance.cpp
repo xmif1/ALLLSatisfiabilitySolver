@@ -6,7 +6,6 @@
 
 #include <chrono>
 #include <ctime>
-#include <omp.h>
 
 /* Constructor for a SATInstance object, with the file path to a DIMACS formatted .cnf file accepted as input.
  * This constructor is responsible for:
