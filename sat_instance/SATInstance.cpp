@@ -85,17 +85,11 @@ bool SATInstance::dependent_clauses(Clause* c1, Clause* c2){
     return false;
 }
 
-// Utility function which checks the dependencies between the clauses of the SAT instance and constructs the associated
-// Laplacian matrix L = D - A for each component, as an Eigen::MatrixXd instance, while also returning the vertex sets
-// of the components of the dependency graph.
-pair<vector<MatrixXd*>*, vector<vector<Clause*>*>*> SATInstance::getDependencyGraph(vector<Clause*>* clauses){
+// Utility function returning the vertex sets of the components of the dependency graph.
+vector<vector<Clause*>*>* SATInstance::getDependencyGraphComponents(vector<Clause*>* clauses){
     ull n_clauses = clauses->size();
 
-    // Initialise a MatrixXd instance and initialise all the entries to zero.
-    auto laplacian = new MatrixXd(n_clauses, n_clauses);
-    laplacian->setZero();
-
-    auto component_laplacians = new vector<MatrixXd*>;
+    //auto component_laplacians = new vector<MatrixXd*>;
     auto component_clauses = new vector<vector<Clause*>*>;
 
     // Initialise a vector with the vertices (clauses) of the dependency graph the remain (initially all n_clauses)
@@ -103,7 +97,7 @@ pair<vector<MatrixXd*>*, vector<vector<Clause*>*>*> SATInstance::getDependencyGr
     for(ull u = 0; u < n_clauses; u++){ remaining_vertices.push_back(u); }
     auto v = remaining_vertices.begin(); // Iterator over the remaining_vertices vector...
 
-    // Lambda expression which recursively constructs the Laplacian and components of the graph
+    // Lambda expression which recursively constructs the components of the graph
     function<void(vector<ull>*)> _get_component;
     _get_component = [&](vector<ull>* component){
         ull i = *v; // Current vertex (clause) pointed to by iterator v
@@ -111,15 +105,13 @@ pair<vector<MatrixXd*>*, vector<vector<Clause*>*>*> SATInstance::getDependencyGr
         remaining_vertices.erase(v); // Remove from remaining_vertices vector
 
         // Iterating over all the remaining vertices, find all the neighbours of v
-        for(auto u = remaining_vertices.begin(); u != remaining_vertices.end();) {
+        for(auto u = remaining_vertices.begin(); u != remaining_vertices.end();){
             ull j = *u; // Current vertex (clause) pointed to by iterator u
 
             // If the clauses i and j are dependent, then:
-            if (dependent_clauses(clauses->at(i), clauses->at(j))) {
-                (*laplacian)(i, j) = -1; // The entry (i, j) of the Laplacian is -1
-                (*laplacian)(j, i) = -1; // The entry (j, i) of the Laplacian is -1 by symmetry
-                (*laplacian)(i, i) += 1; // The degree of i, i.e. the entry (i, i) of the Laplacian, increases by 1
-                (*laplacian)(j, j) += 1; // The degree of j, i.e. the entry (j, j) of the Laplacian, increases by 1
+            if(dependent_clauses(clauses->at(i), clauses->at(j))){
+                (clauses->at(i))->degree += 1;
+                (clauses->at(j))->degree += 1;
             } // Otherwise if independent, the entries (i, j) and (j, i) of the Laplacian are 0
 
             ++u; // Increment iterator
@@ -129,7 +121,7 @@ pair<vector<MatrixXd*>*, vector<vector<Clause*>*>*> SATInstance::getDependencyGr
         for(; v != remaining_vertices.end();){
             ull j = *v;
 
-            if((*laplacian)(i, j) == -1){
+            if(dependent_clauses(clauses->at(i), clauses->at(j))){
                 _get_component(component);
             }
             else{
@@ -146,10 +138,6 @@ pair<vector<MatrixXd*>*, vector<vector<Clause*>*>*> SATInstance::getDependencyGr
         auto component = new vector<ull>;
         _get_component(component);
 
-        auto curr_laplacian = new MatrixXd(component->size(), component->size());
-        *curr_laplacian = (*laplacian)(*component, *component);
-        component_laplacians->push_back(curr_laplacian);
-
         auto curr_clauses = new vector<Clause*>;
         for(auto c: *component){
             curr_clauses->push_back(clauses->at(c));
@@ -159,9 +147,7 @@ pair<vector<MatrixXd*>*, vector<vector<Clause*>*>*> SATInstance::getDependencyGr
         delete component;
     }
 
-    delete laplacian;
-
-    return {component_laplacians, component_clauses};
+    return component_clauses;
 }
 
 // SAT solver based on the Algorithmic Lovasz Local Lemma of Moser and Tardos (2010)

@@ -32,17 +32,7 @@ class SATInstance{
 
         VariablesArray* solve(vector<SubSATInstance*>* subInstances, bool parallel = true) const;
         vector<SubSATInstance*>* createSubSATInstances(vector<vector<Clause*>*>* components, ull parallel_resample = 0) const;
-        static pair<vector<MatrixXd*>*, vector<vector<Clause*>*>*> getDependencyGraph(vector<Clause*>* clauses);
-
-        template<typename T>
-        void partition(vector<SubSATInstance*>* subInstances, vector<T>* ts, blocks (*p)(T), bool parallel = true){
-            #pragma omp parallel for default(none) if(parallel) shared(subInstances, ts, p)
-            for(ull i = 0; i < subInstances->size(); i++){
-                (subInstances->at(i))->partition(ts->at(i), p);
-            }
-        }
-
-    private:
+        static vector<vector<Clause*>*>* getDependencyGraphComponents(vector<Clause*>* clauses);
         static bool dependent_clauses(Clause* c1, Clause* c2);
 };
 

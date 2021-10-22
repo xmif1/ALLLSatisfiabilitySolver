@@ -17,6 +17,7 @@ class Clause{
     public:
         ull* literals;
         ull n_literals;
+        ull degree = 0;
 
         Clause(ull* literals, ull n_literals);
 

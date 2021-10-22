@@ -50,21 +50,23 @@ int main(int argc, char *argv[]){
 
     // Then get the Laplacian describing the dependency graph of the SAT instance, along the the vertex sets of the
     // components of the dependency graph
-    auto graph = SATInstance::getDependencyGraph(clauses);
+    auto components = SATInstance::getDependencyGraphComponents(clauses);
     ull avg_literals_per_clause = ((ull) (satInstance->n_literals / satInstance->n_clauses)) + 1;
     ull parallel_resample = (avg_literals_per_clause < PARALLEL_RESAMPLE_LOWERBOUND || !parallel) ? 0 : avg_literals_per_clause;
-    auto subSATInstances = satInstance->createSubSATInstances(graph.second, parallel_resample);
-
-    // Export the Laplacian into a CSV file, for debugging and correctness checking purposes
-    for(ull i = 0; i < (graph.first)->size(); i++){
-        string csv_fpath = cnf_fpath; csv_fpath.replace(csv_fpath.size() - 4, 4, "_" + to_string(i) + ".csv");
-        MatrixXd_to_CSV((graph.first)->at(i), csv_fpath);
-    }
+    auto subSATInstances = satInstance->createSubSATInstances(components, parallel_resample);
 
     // Get the Laplacian Lambda Core Distance Partition for the dependency graph; note that we get the 'optimal' CDP for
     // every component; for logging purposes, we print the CDP blocks for each component
     if(partition){
-        satInstance->partition<MatrixXd*>(subSATInstances, graph.first, getLaplacianLambdaCDP, parallel);
+        for(ull i = 0; i < subSATInstances->size(); i++){
+            MatrixXd* laplacian = getLaplacian((subSATInstances->at(i))->clauses);
+            string csv_fpath = cnf_fpath; csv_fpath.replace(csv_fpath.size() - 4, 4, "_" + to_string(i) + ".csv");
+            //MatrixXd_to_CSV(laplacian, csv_fpath);
+
+            ((subSATInstances->at(i))->partition<MatrixXd*>)(laplacian, getLaplacianLambdaCDP);
+            delete laplacian;
+        }
+
         cout << "# of components = " << subSATInstances->size() << endl;
         for(ull i = 0; i < subSATInstances->size(); i++){
             cout << "Component " << i + 1 << ": # of partitions = " << (subSATInstances->at(i))->clausePartition->size() << endl;

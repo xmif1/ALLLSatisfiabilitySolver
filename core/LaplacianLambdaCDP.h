@@ -16,6 +16,9 @@
 #include <set>
 
 #include <Eigen/Dense>
+#include <Eigen/Sparse>
+
+#include "../sat_instance/SATInstance.h"
 
 using namespace Eigen;
 using namespace std;
@@ -23,9 +26,39 @@ using namespace std;
 typedef unsigned long long ull;
 typedef vector<set<ull>*>* cdp; // CDPs are given as a pointer to a vectors of pointers to sets, each set being a block
 
+MatrixXd* getLaplacian(vector<Clause*>* clauses);
 cdp getLaplacianLambdaCDP(MatrixXd* laplacian);
 cdp nestedNeighbourhoods(MatrixXd* laplacian, set<ull>* cores);
 double LambdaCDPIndex(cdp lambdaCDP, ull N);
+
+MatrixXd* getLaplacian(vector<Clause*>* clauses){
+    ull n_clauses = clauses->size();
+//    ull sum_of_degrees = 0;
+//    ull avg_clause_literals = 0;
+//    for(ull i = 0; i < n_clauses; i++){
+//        sum_of_degrees += (clauses->at(i))->degree;
+//        avg_clause_literals += (clauses->at(i))->n_literals;
+//    }
+//
+//    avg_clause_literals = (ull) avg_clause_literals / n_clauses;
+
+    // Initialise a MatrixXd instance and initialise all the entries to zero.
+    auto laplacian = new MatrixXd(n_clauses, n_clauses);
+
+    for(ull i = 0; i < n_clauses; i++){
+        for(ull j = i + 1; j < n_clauses; j++){
+            // If the clauses i and j are dependent, then:
+            if(SATInstance::dependent_clauses(clauses->at(i), clauses->at(j))) {
+                (*laplacian)(i, j) = -1; // The entry (i, j) of the Laplacian is -1
+                (*laplacian)(j, i) = -1; // The entry (j, i) of the Laplacian is -1 by symmetry
+            } // Otherwise if independent, the entries (i, j) and (j, i) of the Laplacian are 0
+        }
+
+        (*laplacian)(i, i) = (clauses->at(i))->degree;
+    }
+
+    return laplacian;
+}
 
 /* Computes the 'optimal' Lambda-CDP (LCDP) for the Laplacian of a given graph. The optimal LCDP is defined as the LCDP
  * with the largest LCDP Index; this is generally the LCDP with the largest number of blocks, of approximately equal size
