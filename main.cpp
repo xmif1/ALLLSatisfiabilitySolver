@@ -69,7 +69,7 @@ int main(int argc, char *argv[]){
 
         cout << "# of components = " << subSATInstances->size() << endl;
         for(ull i = 0; i < subSATInstances->size(); i++){
-            cout << "Component " << i + 1 << ": # of partitions = " << (subSATInstances->at(i))->clausePartition->size() << endl;
+            cout << "Component " << i + 1 << ": # of clauses = " << (subSATInstances->at(i))->clauses->size() << ", # of partitions = " << (subSATInstances->at(i))->clausePartition->size() << endl;
             for(ull j = 0; j < (subSATInstances->at(i))->clausePartition->size(); j++){
                 cout << "\tPartition " << j + 1 << ": ";
 
@@ -79,6 +79,12 @@ int main(int argc, char *argv[]){
 
                 cout << endl;
             }
+        }
+    }
+    else{
+        cout << "# of components = " << subSATInstances->size() << endl;
+        for(ull i = 0; i < subSATInstances->size(); i++){
+            cout << "Component " << i + 1 << ": # of clauses = " << (subSATInstances->at(i))->clauses->size() << endl;
         }
     }
 
