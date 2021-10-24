@@ -6,14 +6,13 @@
 #include "sat_instance/SATInstance.h"
 #include <omp.h>
 
-#define PARALLEL_RESAMPLE_LOWERBOUND 5
-
 void MatrixXd_to_CSV(MatrixXd* matrix, const string& fp);
 void output(const string& str, ofstream& out_f);
 
 int main(int argc, char *argv[]){
     bool parallel = false;
     bool partition = false;
+    ull min_parallel_clauses = 0;
 
     string cnf_fpath;
 
@@ -21,23 +20,39 @@ int main(int argc, char *argv[]){
     if(argc <= 1){
         throw std::runtime_error("The filepath to the DIMACS formatted CNF SAT instance was not specified...exiting...");
     }
-    else if(argc > 4){
+    else if(argc > 5){
         throw std::runtime_error("Too many parameters specified...exiting...");
-    }
-    else if(argc == 3 && strcmp(argv[1], "-p") == 0){
-        cnf_fpath = argv[2];
-        parallel = true;
     }
     else if(argc == 3 && strcmp(argv[1], "-l") == 0){
         cnf_fpath = argv[2];
         partition = true;
     }
+    else if(argc == 3 && strcmp(argv[1], "-p") == 0){
+        cnf_fpath = argv[2];
+        parallel = true;
+    }
+    else if(argc == 4 && strcmp(argv[1], "-p") == 0 && strcmp(argv[2], "-l") != 0){
+        cnf_fpath = argv[3];
+        parallel = true;
+        min_parallel_clauses = stoll(argv[2]);
+    }
     else if(argc == 4 && ((strcmp(argv[1], "-l") == 0 && (strcmp(argv[2], "-p")) == 0) ||
                           (strcmp(argv[1], "-p") == 0 && (strcmp(argv[2], "-l")) == 0))){
-
         cnf_fpath = argv[3];
         parallel = true;
         partition = true;
+    }
+    else if(argc == 5 && (strcmp(argv[1], "-l") == 0 && (strcmp(argv[2], "-p")) == 0)){
+        cnf_fpath = argv[4];
+        partition = true;
+        parallel = true;
+        min_parallel_clauses = stoll(argv[3]);
+    }
+    else if(argc == 5 && (strcmp(argv[1], "-p") == 0 && (strcmp(argv[3], "-l")) == 0)){
+        cnf_fpath = argv[4];
+        partition = true;
+        parallel = true;
+        min_parallel_clauses = stoll(argv[2]);
     }
     else if(argc == 2){
         cnf_fpath = argv[1];
@@ -60,10 +75,8 @@ int main(int argc, char *argv[]){
     // Then get the Laplacian describing the dependency graph of the SAT instance, along the the vertex sets of the
     // components of the dependency graph
     auto components = SATInstance::getDependencyGraphComponents(clauses);
-    ull avg_literals_per_clause = ((ull) (satInstance->n_literals / satInstance->n_clauses)) + 1;
-    ull parallel_resample = (avg_literals_per_clause < PARALLEL_RESAMPLE_LOWERBOUND || !parallel) ? 0 : avg_literals_per_clause;
 
-    auto subSATInstances = satInstance->createSubSATInstances(components, parallel_resample);
+    auto subSATInstances = satInstance->createSubSATInstances(components, min_parallel_clauses);
     output("# of components = " + to_string(subSATInstances->size()) + "\n\n", out_f);
 
     // Get the Laplacian Lambda Core Distance Partition for the dependency graph; note that we get the 'optimal' CDP for
