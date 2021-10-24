@@ -4,9 +4,6 @@
 
 #include "SATInstance.h"
 
-#include <chrono>
-#include <ctime>
-
 /* Constructor for a SATInstance object, with the file path to a DIMACS formatted .cnf file accepted as input.
  * This constructor is responsible for:
  *  i. Loading meta data (number of variables, clauses etc) as well as reading the clauses from the specified .cnf file,
@@ -25,11 +22,6 @@ SATInstance::SATInstance(const string& cnf_file_name, vector<Clause*>* clauses){
         cout << "The header information could not be read. Exiting..." << endl;
         exit(1);
     }
-
-    // Display the meta data for monitoring purposes
-    cout << "V_NUM = " << v_num << endl;
-    cout << "C_NUM = " << c_num << endl;
-    cout << "L_NUM = " << l_num << endl;
 
     l_c_num = new int[c_num];
     l_val = new int[l_num];
@@ -152,20 +144,10 @@ vector<vector<Clause*>*>* SATInstance::getDependencyGraphComponents(vector<Claus
 
 // SAT solver based on the Algorithmic Lovasz Local Lemma of Moser and Tardos (2010)
 VariablesArray* SATInstance::solve(vector<SubSATInstance*>* subInstances, bool parallel) const{
-    // Logging...
-    auto timestart = chrono::system_clock::to_time_t(chrono::system_clock::now());
-    cout << "Log " << ctime(&timestart) <<"\tStarting solve..." << endl;
-    auto start = chrono::high_resolution_clock::now();
-
     #pragma omp parallel for default(none) if(parallel) shared(subInstances)
     for(ull i = 0; i < subInstances->size(); i++){
         subInstances->at(i)->solve();
     }
-
-    auto stop = chrono::high_resolution_clock::now();
-    auto duration = chrono::duration_cast<chrono::microseconds>(stop - start);
-    auto timeend = chrono::system_clock::to_time_t(chrono::system_clock::now());
-    cout << "Log " << ctime(&timeend) <<"\tCompleted solve...Duration: " << duration.count() << endl;
 
     return var_arr;
 }

@@ -1,5 +1,6 @@
 #include <iostream>
-#include <fstream>
+#include <chrono>
+#include <ctime>
 
 #include "core/LaplacianLambdaCDP.h"
 #include "sat_instance/SATInstance.h"
@@ -8,6 +9,7 @@
 #define PARALLEL_RESAMPLE_LOWERBOUND 5
 
 void MatrixXd_to_CSV(MatrixXd* matrix, const string& fp);
+void output(const string& str, ofstream& out_f);
 
 int main(int argc, char *argv[]){
     bool parallel = false;
@@ -44,16 +46,25 @@ int main(int argc, char *argv[]){
         throw std::runtime_error("Invalid options specified...exiting...");
     }
 
+    string out_fpath = cnf_fpath; out_fpath.replace(out_fpath.size() - 4, 4, ".out");
+    ofstream out_f(out_fpath);
+
     // Initialise new SATInstance from specified CNF file
     auto clauses = new vector<Clause*>;
     auto satInstance = new SATInstance(cnf_fpath, clauses);
+
+    // Display the meta data for monitoring purposes
+    output("V_NUM = " + to_string(satInstance->n_vars) + "\nC_NUM = " + to_string(satInstance->n_clauses) +
+           "\nL_NUM = " + to_string(satInstance->n_literals) + "\n\n", out_f);
 
     // Then get the Laplacian describing the dependency graph of the SAT instance, along the the vertex sets of the
     // components of the dependency graph
     auto components = SATInstance::getDependencyGraphComponents(clauses);
     ull avg_literals_per_clause = ((ull) (satInstance->n_literals / satInstance->n_clauses)) + 1;
     ull parallel_resample = (avg_literals_per_clause < PARALLEL_RESAMPLE_LOWERBOUND || !parallel) ? 0 : avg_literals_per_clause;
+
     auto subSATInstances = satInstance->createSubSATInstances(components, parallel_resample);
+    output("# of components = " + to_string(subSATInstances->size()) + "\n\n", out_f);
 
     // Get the Laplacian Lambda Core Distance Partition for the dependency graph; note that we get the 'optimal' CDP for
     // every component; for logging purposes, we print the CDP blocks for each component
@@ -67,34 +78,52 @@ int main(int argc, char *argv[]){
             delete laplacian;
         }
 
-        cout << "# of components = " << subSATInstances->size() << endl;
         for(ull i = 0; i < subSATInstances->size(); i++){
-            cout << "Component " << i + 1 << ": # of clauses = " << (subSATInstances->at(i))->clauses->size() << ", # of partitions = " << (subSATInstances->at(i))->clausePartition->size() << endl;
+            output("Component " + to_string(i + 1) + ": # of clauses = " +
+                   to_string((subSATInstances->at(i))->clauses->size()) + ", # of partitions = " +
+                   to_string((subSATInstances->at(i))->clausePartition->size()) + "\n", out_f);
+
             for(ull j = 0; j < (subSATInstances->at(i))->clausePartition->size(); j++){
-                cout << "\tPartition " << j + 1 << ": ";
+                output("\tPartition " + to_string(j + 1) + ": ", out_f);
 
                 for(auto c: *((subSATInstances->at(i))->clausePartition->at(j))){
-                    cout << c << " ";
+                    output(to_string(c) + " ", out_f);
                 }
 
-                cout << endl;
+                output("\n\n", out_f);
             }
         }
     }
     else{
-        cout << "# of components = " << subSATInstances->size() << endl;
         for(ull i = 0; i < subSATInstances->size(); i++){
-            cout << "Component " << i + 1 << ": # of clauses = " << (subSATInstances->at(i))->clauses->size() << endl;
+            output("Component " + to_string(i + 1) + ": # of clauses = " +
+                   to_string((subSATInstances->at(i))->clauses->size()) + "\n", out_f);
         }
+
+        output("\n", out_f);
     }
 
     // Solve the SAT instance (using the Algorithmic Lovasz Local Lemma)
+    // Logging...
+    auto timestart = chrono::system_clock::to_time_t(chrono::system_clock::now());
+    string log_start = "Log "; output(log_start.append(ctime(&timestart)) + "\tStarting solve...\n", out_f);
+    auto start = chrono::high_resolution_clock::now();
+
     VariablesArray* sat = satInstance->solve(subSATInstances, parallel);
 
+    auto stop = chrono::high_resolution_clock::now();
+    auto duration = chrono::duration_cast<chrono::microseconds>(stop - start);
+    auto timeend = chrono::system_clock::to_time_t(chrono::system_clock::now());
+    string log_end = "Log "; output(log_end.append(ctime(&timeend)) + "\tCompleted solve...Duration: " +
+                                    to_string(duration.count()) + "\n\n", out_f);
+
     // Print the variable assignment for the solution
-//    for(ull i = 0; i < satInstance->n_vars; i++){
-//        cout << "Var" << i + 1 << " = " << (sat->vars)[i] << endl;
-//    }
+    output("SATISFIABLE:", out_f);
+    for(ull i = 0; i < satInstance->n_vars; i++){
+        output("\nVariable " + to_string(i + 1) + " = " + to_string((sat->vars)[i]), out_f);
+    }
+
+    out_f.close();
 
     return 0;
 }
@@ -104,8 +133,13 @@ void MatrixXd_to_CSV(MatrixXd* matrix, const string& fp){
     const static IOFormat CSVFormat(FullPrecision, DontAlignCols, ",", "\n");
 
     ofstream file(fp);
-    if (file.is_open()){
+    if(file.is_open()){
         file << matrix->format(CSVFormat);
         file.close();
     }
+}
+
+void output(const string& str, ofstream& out_f){
+    cout << str;
+    out_f << str;
 }
