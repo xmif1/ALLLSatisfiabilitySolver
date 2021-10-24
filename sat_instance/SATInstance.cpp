@@ -143,10 +143,51 @@ vector<vector<Clause*>*>* SATInstance::getDependencyGraphComponents(vector<Claus
 }
 
 // SAT solver based on the Algorithmic Lovasz Local Lemma of Moser and Tardos (2010)
-VariablesArray* SATInstance::solve(vector<SubSATInstance*>* subInstances, bool parallel) const{
-    #pragma omp parallel for default(none) if(parallel) shared(subInstances)
-    for(ull i = 0; i < subInstances->size(); i++){
-        subInstances->at(i)->solve();
+VariablesArray* SATInstance::solve(vector<SubSATInstance*>* subInstances, ull n_batches) const{
+    if(n_batches){
+        // Divide into batches, to be executed in parallel...
+
+        if(subInstances->size() < n_batches){
+            n_batches = subInstances->size();
+        }
+
+        ull batch_size = (ull) (subInstances->size() / n_batches);
+        if((batch_size * n_batches) < subInstances->size()){
+            batch_size++;
+        }
+
+        auto subInstanceBatches = new vector<vector<SubSATInstance*>*>;
+        ull k = 0;
+        for(ull i = 0; i < n_batches; i++){
+            auto subInstanceBatch = new vector<SubSATInstance*>;
+            for(ull j = 0; (j < batch_size) && (k < subInstances->size()); j++){
+                subInstanceBatch->push_back(subInstances->at(k));
+                k++;
+            }
+
+            subInstanceBatches->push_back(subInstanceBatch);
+        }
+
+        // Solve batches in parallel...
+        #pragma omp parallel for default(none) shared(n_batches, subInstanceBatches)
+        for(ull i = 0; i < n_batches; i++){
+            for(auto s: *(subInstanceBatches->at(i))){
+                s->solve();
+            }
+        }
+
+        // Memory clean--up
+
+        for(auto b: *subInstanceBatches){
+            delete b;
+        }
+
+        delete subInstanceBatches;
+    }
+    else{
+        for(auto subInstance : *subInstances){
+            subInstance->solve();
+        }
     }
 
     return var_arr;

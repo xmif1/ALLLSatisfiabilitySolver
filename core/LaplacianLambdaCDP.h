@@ -8,8 +8,8 @@
 
 // Macros for determining if two values are approximately equal to each other for a given epsilon
 #define EPSILON 1.0e-15
-#define approx_eig(l1, l2, N) ((l1 < (l2 + (EPSILON*N))) && (l1 > (l2 - (EPSILON*N))))
-#define approx_zero(l, N) ((l < (EPSILON*N)) && (l > (-1*EPSILON*N)))
+#define approx_eig(l1, l2, N) ((l1 < ((l2) + (EPSILON*N))) && (l1 > (l2 - (EPSILON*N))))
+#define approx_zero(l, N) ((l < (EPSILON*(N))) && (l > (-1*EPSILON*N)))
 
 #include <iostream>
 #include <vector>

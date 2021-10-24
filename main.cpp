@@ -8,10 +8,12 @@
 
 void MatrixXd_to_CSV(MatrixXd* matrix, const string& fp);
 void output(const string& str, ofstream& out_f);
+vector<string*>* get_p_opts(string s);
 
 int main(int argc, char *argv[]){
     bool parallel = false;
     bool partition = false;
+    ull n_batches = 0;
     ull min_parallel_clauses = 0;
 
     string cnf_fpath;
@@ -34,7 +36,10 @@ int main(int argc, char *argv[]){
     else if(argc == 4 && strcmp(argv[1], "-p") == 0 && strcmp(argv[2], "-l") != 0){
         cnf_fpath = argv[3];
         parallel = true;
-        min_parallel_clauses = stoll(argv[2]);
+
+        auto p_opts = get_p_opts(argv[2]);
+        n_batches = stoll(*(p_opts->at(0)));
+        min_parallel_clauses = stoll(*(p_opts->at(1)));
     }
     else if(argc == 4 && ((strcmp(argv[1], "-l") == 0 && (strcmp(argv[2], "-p")) == 0) ||
                           (strcmp(argv[1], "-p") == 0 && (strcmp(argv[2], "-l")) == 0))){
@@ -46,13 +51,19 @@ int main(int argc, char *argv[]){
         cnf_fpath = argv[4];
         partition = true;
         parallel = true;
-        min_parallel_clauses = stoll(argv[3]);
+
+        auto p_opts = get_p_opts(argv[3]);
+        n_batches = stoll(*(p_opts->at(0)));
+        min_parallel_clauses = stoll(*(p_opts->at(1)));
     }
     else if(argc == 5 && (strcmp(argv[1], "-p") == 0 && (strcmp(argv[3], "-l")) == 0)){
         cnf_fpath = argv[4];
         partition = true;
         parallel = true;
-        min_parallel_clauses = stoll(argv[2]);
+
+        auto p_opts = get_p_opts(argv[2]);
+        n_batches = stoll(*(p_opts->at(0)));
+        min_parallel_clauses = stoll(*(p_opts->at(1)));
     }
     else if(argc == 2){
         cnf_fpath = argv[1];
@@ -117,12 +128,16 @@ int main(int argc, char *argv[]){
     }
 
     // Solve the SAT instance (using the Algorithmic Lovasz Local Lemma)
+    if(parallel && n_batches == 0){
+        n_batches = subSATInstances->size();
+    }
+
     // Logging...
     auto timestart = chrono::system_clock::to_time_t(chrono::system_clock::now());
     string log_start = "Log "; output(log_start.append(ctime(&timestart)) + "\tStarting solve...\n", out_f);
     auto start = chrono::high_resolution_clock::now();
 
-    VariablesArray* sat = satInstance->solve(subSATInstances, parallel);
+    VariablesArray* sat = satInstance->solve(subSATInstances, n_batches);
 
     auto stop = chrono::high_resolution_clock::now();
     auto duration = chrono::duration_cast<chrono::microseconds>(stop - start);
@@ -155,4 +170,23 @@ void MatrixXd_to_CSV(MatrixXd* matrix, const string& fp){
 void output(const string& str, ofstream& out_f){
     cout << str;
     out_f << str;
+}
+
+vector<string*>* get_p_opts(string s){
+    auto p_opts = new vector<string*>;
+    string seperator = ":";
+
+    size_t pos = 0;
+    while((pos = s.find(seperator)) != std::string::npos) {
+        p_opts->push_back(new string(s.substr(0, pos)));
+        s.erase(0, pos + seperator.length());
+    }
+    p_opts->push_back(new string(s));
+
+    if(p_opts->size() != 2){
+        throw std::runtime_error("Invalid parallelisation parameters given...exiting...");
+    }
+    else{
+        return p_opts;
+    }
 }
