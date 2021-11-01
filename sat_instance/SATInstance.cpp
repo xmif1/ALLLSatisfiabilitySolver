@@ -4,6 +4,9 @@
 
 #include "SATInstance.h"
 
+#include <chrono>
+#include <ctime>
+
 /* Constructor for a SATInstance object, with the file path to a DIMACS formatted .cnf file accepted as input.
  * This constructor is responsible for:
  *  i. Loading meta data (number of variables, clauses etc) as well as reading the clauses from the specified .cnf file,
@@ -169,11 +172,24 @@ VariablesArray* SATInstance::solve(vector<SubSATInstance*>* subInstances, ull n_
         }
 
         // Solve batches in parallel...
-        #pragma omp parallel for default(none) shared(n_batches, subInstanceBatches)
+        #pragma omp parallel for default(none) shared(n_batches, subInstanceBatches, cout)
         for(ull i = 0; i < n_batches; i++){
+            // Logging...
+            auto timestart = chrono::system_clock::to_time_t(chrono::system_clock::now());
+            cout << "Log " << ctime(&timestart) << "\tStarting solve of batch " << i << "on thread "
+                 << omp_get_thread_num() << endl;
+            auto start = chrono::high_resolution_clock::now();
+
             for(auto s: *(subInstanceBatches->at(i))){
                 s->solve();
             }
+
+            auto stop = chrono::high_resolution_clock::now();
+            auto duration = chrono::duration_cast<chrono::microseconds>(stop - start);
+            auto timeend = chrono::system_clock::to_time_t(chrono::system_clock::now());
+
+            cout << "Log " << ctime(&timeend) << "\tCompleted solve of batch " << i << "on thread "
+                 << omp_get_thread_num() << "; duration = " << duration.count() << endl;
         }
 
         // Memory clean--up
