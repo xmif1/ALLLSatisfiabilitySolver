@@ -67,7 +67,7 @@ bool SATInstance::dependent_clauses(Clause* c1, Clause* c2){
         for(int j = 0; j < c2->n_literals; j++){
             // If the variable associated with x is equal to the variable associated with y, then the clauses are
             // dependent and hence we return true (no need to check further - we require AT LEAST one).
-            if(((c1->literals)[i] >> 1) == ((c2->literals)[i] >> 1)){
+            if(((c1->literals)[i] >> 1) == ((c2->literals)[j] >> 1)){
                 return true;
             }
         }
@@ -85,50 +85,40 @@ vector<vector<Clause*>*>* SATInstance::getDependencyGraphComponents(vector<Claus
     auto component_clauses = new vector<vector<Clause*>*>;
 
     // Initialise a vector with the vertices (clauses) of the dependency graph the remain (initially all n_clauses)
-    vector<ull> remaining_vertices;
-    for(ull u = 0; u < n_clauses; u++){ remaining_vertices.push_back(u); }
-    auto v = remaining_vertices.begin(); // Iterator over the remaining_vertices vector...
+    map<ull, ull> remaining_vertices;
+    for(ull u = 0; u < n_clauses; u++){ remaining_vertices[u] = u; }
 
     // Lambda expression which recursively constructs the components of the graph
-    function<void(vector<ull>*)> _get_component;
-    _get_component = [&](vector<ull>* component){
-        ull i = *v; // Current vertex (clause) pointed to by iterator v
+    function<void(vector<ull>*, ull)> _get_component;
+    _get_component = [&](vector<ull>* component, ull i){
+        remaining_vertices.erase(i); // Remove from remaining_vertices vector
         component->push_back(i); // Add to current component
-        remaining_vertices.erase(v); // Remove from remaining_vertices vector
+        vector<ull> neighbours;
 
         // Iterating over all the remaining vertices, find all the neighbours of v
-        for(auto u = remaining_vertices.begin(); u != remaining_vertices.end();){
-            ull j = *u; // Current vertex (clause) pointed to by iterator u
+        for(auto u: remaining_vertices){
+            ull j = u.second;
 
             // If the clauses i and j are dependent, then:
             if(dependent_clauses(clauses->at(i), clauses->at(j))){
                 (clauses->at(i))->degree += 1;
                 (clauses->at(j))->degree += 1;
+                neighbours.push_back(j);
             } // Otherwise if independent, the entries (i, j) and (j, i) of the Laplacian are 0
-
-            ++u; // Increment iterator
         }
 
-        // Recursively call _get_component() on the neighbours of the vertex pointed to by the iterator v
-        for(; v != remaining_vertices.end();){
-            ull j = *v;
-
-            if(dependent_clauses(clauses->at(i), clauses->at(j))){
-                _get_component(component);
-            }
-            else{
-                ++v;
+        for(auto n: neighbours){
+            if(remaining_vertices.count(n) > 0){
+                _get_component(component, n);
             }
         }
-
-        v = remaining_vertices.begin(); // Reset to beginning (otherwise some vertices will not be visited)
     };
 
     // Until remaining_vertices is empty, add a new component and call the _get_component() lambda function to find the
     // next component and its adjacencies
-    while(v != remaining_vertices.end()){
+    while(!remaining_vertices.empty()){
         auto component = new vector<ull>;
-        _get_component(component);
+        _get_component(component, (remaining_vertices.begin())->second);
 
         auto curr_clauses = new vector<Clause*>;
         for(auto c: *component){

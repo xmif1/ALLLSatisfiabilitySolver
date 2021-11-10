@@ -6,6 +6,7 @@
 #define ALLLSATISFIABILITYSOLVER_SATINSTANCE_H
 
 #include <random>
+#include <map>
 #include <omp.h>
 
 #include "../cnf_io/cnf_io.h"
