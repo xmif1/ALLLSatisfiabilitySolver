@@ -6,6 +6,7 @@
 #define ALLLSATISFIABILITYSOLVER_SUBSATINSTANCE_H
 
 #include <iostream>
+#include <utility>
 #include <vector>
 #include <set>
 
@@ -30,6 +31,7 @@ class SubSATInstance{
 
         void solve();
         Clause* is_satisfied();
+        bool is_ALLL_compatible() const;
 
         template<typename T>
         void partition(T t, blocks (*p)(T)){

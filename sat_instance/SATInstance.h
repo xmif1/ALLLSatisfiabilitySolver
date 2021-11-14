@@ -31,8 +31,10 @@ class SATInstance{
 
         SATInstance(const string& cnf_file_name, vector<Clause*>* clauses);
 
-        VariablesArray* solve(vector<SubSATInstance*>* subInstances, bool parallel = true) const;
-        vector<SubSATInstance*>* createSubSATInstances(vector<vector<Clause*>*>* components, ull parallel_resample = 0) const;
+        VariablesArray* solve(vector<SubSATInstance*>* subInstances, bool parallel = true);
+        vector<SubSATInstance*>* createSubSATInstances(vector<vector<Clause*>*>* components, ull parallel_resample = 0);
+        bool verify_validity(vector<Clause*>* clauses);
+
         static vector<vector<Clause*>*>* getDependencyGraphComponents(vector<Clause*>* clauses);
         static bool dependent_clauses(Clause* c1, Clause* c2);
 };

@@ -4,8 +4,6 @@
 
 #include "SubSATInstance.h"
 
-#include <utility>
-
 SubSATInstance::SubSATInstance(VariablesArray* variables, vector<Clause*>* clauses, ull parallel_resample){
     this->var_arr = variables;
     this->clauses = clauses;
@@ -77,4 +75,14 @@ void SubSATInstance::solve(){
             c = is_satisfied();
         }
     }
+}
+
+bool SubSATInstance::is_ALLL_compatible() const{
+    for(auto c: *clauses){
+        if(floor(pow(2, c->n_literals) - 1) < c->degree){
+            return false;
+        }
+    }
+
+    return true;
 }

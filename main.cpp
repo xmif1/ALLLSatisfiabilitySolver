@@ -92,7 +92,12 @@ int main(int argc, char *argv[]){
         }
 
         for(ull i = 0; i < subSATInstances->size(); i++){
-            output("Component " + to_string(i + 1) + ": # of clauses = " +
+            string alll_str;
+            if((subSATInstances->at(i))->is_ALLL_compatible()){
+                alll_str = " (ALLL Compatible)";
+            }
+
+            output("Component " + to_string(i + 1) + alll_str + ": # of clauses = " +
                    to_string((subSATInstances->at(i))->clauses->size()) + ", # of partitions = " +
                    to_string((subSATInstances->at(i))->clausePartition->size()) + "\n", out_f);
 
@@ -109,7 +114,12 @@ int main(int argc, char *argv[]){
     }
     else{
         for(ull i = 0; i < subSATInstances->size(); i++){
-            output("Component " + to_string(i + 1) + ": # of clauses = " +
+            string alll_str;
+            if((subSATInstances->at(i))->is_ALLL_compatible()){
+                alll_str = " (ALLL Compatible)";
+            }
+
+            output("Component " + to_string(i + 1) + alll_str + ": # of clauses = " +
                    to_string((subSATInstances->at(i))->clauses->size()) + "\n", out_f);
         }
 
@@ -130,15 +140,23 @@ int main(int argc, char *argv[]){
     string log_end = "Log "; output(log_end.append(ctime(&timeend)) + "\tCompleted solve...Duration: " +
                                     to_string(duration.count()) + "\n\n", out_f);
 
-    // Print the variable assignment for the solution
-    output("SATISFIABLE:", out_f);
-    for(ull i = 0; i < satInstance->n_vars; i++){
-        output("\nVariable " + to_string(i + 1) + " = " + to_string((sat->vars)[i]), out_f);
+    if(satInstance->verify_validity(clauses)){
+        // Print the variable assignment for the solution
+        output("SATISFIABLE:", out_f);
+        for(ull i = 0; i < satInstance->n_vars; i++){
+            output("\nVariable " + to_string(i + 1) + " = " + to_string((sat->vars)[i]), out_f);
+        }
+
+        out_f.close();
+        return 0;
+    }
+    else{
+        output("ERROR: Solver converged to an invalid solution!\n", out_f);
+
+        out_f.close();
+        return 1;
     }
 
-    out_f.close();
-
-    return 0;
 }
 
 // Utility function for exporting an Eigen MatrixXd instance to a .csv file
