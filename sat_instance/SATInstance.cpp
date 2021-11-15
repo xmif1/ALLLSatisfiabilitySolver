@@ -77,58 +77,56 @@ bool SATInstance::dependent_clauses(Clause* c1, Clause* c2){
     return false;
 }
 
-// Utility function returning the vertex sets of the components of the dependency graph.
 vector<vector<Clause*>*>* SATInstance::getDependencyGraphComponents(vector<Clause*>* clauses){
     ull n_clauses = clauses->size();
 
-    //auto component_laplacians = new vector<MatrixXd*>;
+    auto component = new vector<Clause*>;
     auto component_clauses = new vector<vector<Clause*>*>;
 
-    // Initialise a vector with the vertices (clauses) of the dependency graph the remain (initially all n_clauses)
-    map<ull, ull> remaining_vertices;
-    for(ull u = 0; u < n_clauses; u++){ remaining_vertices[u] = u; }
+    vector<ull> neighbours;
+    vector<ull> neighbours_queue;
+    vector<ull> remaining_clauses;
+    for(ull u = 0; u < n_clauses; u++){ remaining_clauses.push_back(u);}
 
-    // Lambda expression which recursively constructs the components of the graph
-    function<void(vector<ull>*, ull)> _get_component;
-    _get_component = [&](vector<ull>* component, ull i){
-        remaining_vertices.erase(i); // Remove from remaining_vertices vector
-        component->push_back(i); // Add to current component
-        vector<ull> neighbours;
+    while(!remaining_clauses.empty()){
+        if(neighbours.empty()){
+            neighbours.push_back(remaining_clauses.front());
+            component->push_back(clauses->at(remaining_clauses.front()));
 
-        // Iterating over all the remaining vertices, find all the neighbours of v
-        for(auto u: remaining_vertices){
-            ull j = u.second;
-
-            // If the clauses i and j are dependent, then:
-            if(dependent_clauses(clauses->at(i), clauses->at(j))){
-                (clauses->at(i))->degree += 1;
-                (clauses->at(j))->degree += 1;
-                neighbours.push_back(j);
-            } // Otherwise if independent, the entries (i, j) and (j, i) of the Laplacian are 0
+            remaining_clauses.erase(remaining_clauses.begin());
         }
 
         for(auto n: neighbours){
-            if(remaining_vertices.count(n) > 0){
-                _get_component(component, n);
+            auto idx = remaining_clauses.begin();
+            while(idx != remaining_clauses.end()){
+                if(dependent_clauses(clauses->at(n), clauses->at(*idx))){
+                    (clauses->at(n))->degree += 1;
+                    (clauses->at(*idx))->degree += 1;
+
+                    neighbours_queue.push_back(*idx);
+                    component->push_back(clauses->at(*idx));
+
+                    idx = remaining_clauses.erase(idx);
+                }
+                else{
+                    idx++;
+                }
             }
         }
-    };
 
-    // Until remaining_vertices is empty, add a new component and call the _get_component() lambda function to find the
-    // next component and its adjacencies
-    while(!remaining_vertices.empty()){
-        auto component = new vector<ull>;
-        _get_component(component, (remaining_vertices.begin())->second);
+        if(neighbours_queue.empty()){
+            neighbours.clear();
 
-        auto curr_clauses = new vector<Clause*>;
-        for(auto c: *component){
-            curr_clauses->push_back(clauses->at(c));
+            component_clauses->push_back(component);
+            component = new vector<Clause*>;
         }
-
-        component_clauses->push_back(curr_clauses);
-        delete component;
+        else{
+            neighbours = neighbours_queue;
+            neighbours_queue.clear();
+        }
     }
 
+    component_clauses->push_back(component);
     return component_clauses;
 }
 
