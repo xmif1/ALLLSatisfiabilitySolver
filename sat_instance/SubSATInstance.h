@@ -39,9 +39,8 @@ class SubSATInstance{
         }
 
     private:
-        // Largest prime number (2^64 - 59) that fits in a 64-bit register; note that this limits the number of clauses
-        // that can be in the SAT instance to 2^64 - 59 (which should be reasonably large enough...we hope...)
-        const ull P_2e64_m59 = 18446744073709551557;
+        // Prime number for LCG over the clauses array (which should be reasonably large enough...we hope...)
+        const ull P_9223372036854775783 = 9223372036854775783;
 
         vector<RBG<default_random_engine>*> rbg_ensemble;
 

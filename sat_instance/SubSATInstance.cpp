@@ -22,7 +22,7 @@ SubSATInstance::SubSATInstance(VariablesArray* variables, vector<Clause*>* claus
     }
 
     n_clauses = (this->clauses)->size(); // Number of clauses in SAT instance
-    C = P_2e64_m59 % n_clauses; // Starting seed for an LCG based index to the this.clauses vector, which pseudo-randomly
+    C = P_9223372036854775783 % n_clauses; // Starting seed for an LCG based index to the this.clauses vector, which pseudo-randomly
                                 // visits all the clauses exactly once with a period of n_clauses, allowing for efficient
                                 // 'shuffling' of the clauses vector.
 }
@@ -45,7 +45,7 @@ Clause* SubSATInstance::is_satisfied(){
                * pseudo-random shuffling of the clauses vector, and is required for optimal convergence of the Algorithmic
                * Lovasz Local Lemma method.
                */
-            C = (C + P_2e64_m59) % n_clauses;
+            C = (C + P_9223372036854775783) % n_clauses;
         }
     }
 
