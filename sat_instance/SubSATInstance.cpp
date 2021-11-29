@@ -79,7 +79,7 @@ void SubSATInstance::solve(){
 
 bool SubSATInstance::is_ALLL_compatible() const{
     for(auto c: *clauses){
-        if(floor(pow(2, c->n_literals) - 1) < c->degree){
+        if(floor((pow(2, c->n_literals) / exp(1.0)) - 1.0) < c->degree){
             return false;
         }
     }

@@ -27,4 +27,4 @@ add_executable(ALLLSatisfiabilitySolver main.cpp
                                         cnf_io/cnf_io.h)
 target_link_libraries(ALLLSatisfiabilitySolver OpenMP::OpenMP_CXX)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -msse2 -DNDEBUG") # specify compiler optimisations
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -msse2 -DNDEBUG") # specify compiler optimisations add -O3 -DNDEBUG

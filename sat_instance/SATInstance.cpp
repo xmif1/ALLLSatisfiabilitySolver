@@ -126,7 +126,9 @@ vector<vector<Clause*>*>* SATInstance::getDependencyGraphComponents(vector<Claus
         }
     }
 
-    component_clauses->push_back(component);
+    if(!component->empty()){
+        component_clauses->push_back(component);
+    }
     return component_clauses;
 }
 
