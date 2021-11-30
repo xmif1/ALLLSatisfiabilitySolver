@@ -57,7 +57,7 @@ void SubSATInstance::solve(){
     if(parallel_resample){
         while(c){ // While there exists a clause c which is not satisfied...
             // For every variable in the clause (obtained by left shifting by 1 the literal encoding), randomly re-sample
-            #pragma omp parallel for default(none) if (parallel_resample <= c->n_literals) shared(c)
+            #pragma omp parallel for schedule(dynamic) default(none) if (parallel_resample <= c->n_literals) shared(c)
             for(ull i = 0; i < c->n_literals; i++){
                 (var_arr->vars)[(c->literals)[i] >> 1] = (rbg_ensemble.at(i))->sample();
             }

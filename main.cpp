@@ -142,7 +142,7 @@ int main(int argc, char *argv[]){
 
     if(satInstance->verify_validity(clauses)){
         // Print the variable assignment for the solution
-        output("SATISFIABLE", out_f);
+        output("SATISFIABLE\n", out_f);
 //        for(ull i = 0; i < satInstance->n_vars; i++){
 //            output("\nVariable " + to_string(i + 1) + " = " + to_string((sat->vars)[i]), out_f);
 //        }
