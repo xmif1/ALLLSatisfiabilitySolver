@@ -99,7 +99,7 @@ int main(int argc, char *argv[]){
 
         for(ull i = 0; i < subSATInstances->size(); i++){
             string alll_str;
-            if((subSATInstances->at(i))->is_ALLL_compatible()){
+            if(parallel && (subSATInstances->at(i))->is_ALLL_compatible()){
                 alll_str = " (ALLL Compatible)";
             }
 
@@ -121,7 +121,7 @@ int main(int argc, char *argv[]){
     else{
         for(ull i = 0; i < subSATInstances->size(); i++){
             string alll_str;
-            if((subSATInstances->at(i))->is_ALLL_compatible()){
+            if(parallel && (subSATInstances->at(i))->is_ALLL_compatible()){
                 alll_str = " (ALLL Compatible)";
             }
 
