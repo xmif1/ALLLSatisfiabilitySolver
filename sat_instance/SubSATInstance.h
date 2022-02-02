@@ -10,20 +10,15 @@
 #include <vector>
 #include <set>
 
-#include <Eigen/Dense>
 #include <omp.h>
 
 #include "../core/VariablesArray.h"
 #include "../core/Clause.h"
 
-using namespace Eigen;
 using namespace std;
-
-typedef vector<set<ull>*>* blocks;
 
 class SubSATInstance{
     public:
-        blocks clausePartition = nullptr;
         vector<Clause*>* clauses;
         VariablesArray* var_arr;
 
@@ -32,11 +27,6 @@ class SubSATInstance{
         void solve();
         Clause* is_satisfied();
         bool is_ALLL_compatible() const;
-
-        template<typename T>
-        void partition(T t, blocks (*p)(T)){
-            clausePartition = p(t);
-        }
 
     private:
         // Prime number for LCG over the clauses array (which should be reasonably large enough...we hope...)

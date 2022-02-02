@@ -14,7 +14,6 @@
 #include "SubSATInstance.h"
 #include "../core/RandomBoolGenerator.h"
 
-using namespace Eigen;
 using namespace std;
 
 /* Represents a CNF SAT instance loaded from a DIMACS-formatted file, providing a number of functions to:
@@ -31,9 +30,9 @@ class SATInstance{
 
         SATInstance(const string& cnf_file_name, vector<Clause*>* clauses);
 
-        VariablesArray* solve(vector<SubSATInstance*>* subInstances, bool parallel = true);
-        vector<SubSATInstance*>* createSubSATInstances(vector<vector<Clause*>*>* components, ull parallel_resample = 0);
-        bool verify_validity(vector<Clause*>* clauses);
+        VariablesArray* solve(vector<SubSATInstance*>* subInstances, bool parallel = true) const;
+        vector<SubSATInstance*>* createSubSATInstances(vector<vector<Clause*>*>* components, ull parallel_resample = 0) const;
+        bool verify_validity(vector<Clause*>* clauses) const;
 
         static vector<vector<Clause*>*>* getDependencyGraphComponents(vector<Clause*>* clauses);
         static bool dependent_clauses(Clause* c1, Clause* c2);

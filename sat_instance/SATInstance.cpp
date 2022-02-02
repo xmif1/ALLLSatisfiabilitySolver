@@ -133,7 +133,7 @@ vector<vector<Clause*>*>* SATInstance::getDependencyGraphComponents(vector<Claus
 }
 
 // SAT solver based on the Algorithmic Lovasz Local Lemma of Moser and Tardos (2010)
-VariablesArray* SATInstance::solve(vector<SubSATInstance*>* subInstances, bool parallel){
+VariablesArray* SATInstance::solve(vector<SubSATInstance*>* subInstances, bool parallel) const{
     #pragma omp parallel for if(parallel) schedule(dynamic) default(none) shared(subInstances)
     for(ull i = 0; i < subInstances->size(); i++){
         subInstances->at(i)->solve();
@@ -142,7 +142,7 @@ VariablesArray* SATInstance::solve(vector<SubSATInstance*>* subInstances, bool p
     return var_arr;
 }
 
-vector<SubSATInstance*>* SATInstance::createSubSATInstances(vector<vector<Clause*>*>* components, ull parallel_resample){
+vector<SubSATInstance*>* SATInstance::createSubSATInstances(vector<vector<Clause*>*>* components, ull parallel_resample) const{
     auto subInstance = new vector<SubSATInstance*>;
     for(auto c: *components){
         subInstance->push_back(new SubSATInstance(var_arr, c, parallel_resample));
@@ -151,7 +151,7 @@ vector<SubSATInstance*>* SATInstance::createSubSATInstances(vector<vector<Clause
     return subInstance;
 }
 
-bool SATInstance::verify_validity(vector<Clause*>* clauses){
+bool SATInstance::verify_validity(vector<Clause*>* clauses) const{
     for(auto c: *clauses){
         if(c->is_not_satisfied(var_arr)){
             return false;

@@ -9,16 +9,12 @@ if(OPENMP_FOUND)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 endif()
 
-include_directories(/usr/local/include)
-#link_directories(/usr/local/lib)
-
 add_executable(ALLLSatisfiabilitySolver main.cpp
                                         core/VariablesArray.cpp
                                         core/VariablesArray.h
                                         core/Clause.cpp
                                         core/Clause.h
                                         core/RandomBoolGenerator.h
-                                        core/LaplacianLambdaCDP.h
                                         sat_instance/SATInstance.cpp
                                         sat_instance/SATInstance.h
                                         sat_instance/SubSATInstance.cpp
@@ -27,4 +23,4 @@ add_executable(ALLLSatisfiabilitySolver main.cpp
                                         cnf_io/cnf_io.h)
 target_link_libraries(ALLLSatisfiabilitySolver OpenMP::OpenMP_CXX)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -msse2 -DNDEBUG") # specify compiler optimisations add -O3 -DNDEBUG
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -DNDEBUG") # specify compiler optimisations add -O3 -DNDEBUG
