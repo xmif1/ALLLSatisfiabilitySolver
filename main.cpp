@@ -9,7 +9,7 @@ void output(const string& str, ofstream& out_f);
 
 int main(int argc, char *argv[]){
     bool parallel = false;
-    ull min_parallel_clauses = 0;
+    int min_parallel_clauses = 0;
 
     string cnf_fpath;
 

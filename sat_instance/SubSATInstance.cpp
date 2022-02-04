@@ -4,19 +4,19 @@
 
 #include "SubSATInstance.h"
 
-SubSATInstance::SubSATInstance(VariablesArray* variables, vector<Clause*>* clauses, ull parallel_resample){
+SubSATInstance::SubSATInstance(VariablesArray* variables, vector<Clause*>* clauses, int parallel_resample){
     this->var_arr = variables;
     this->clauses = clauses;
     this->parallel_resample = parallel_resample;
 
-    ull max_clause_literals = 0;
+    int max_clause_literals = 0;
     for(auto c: *clauses){
         if(c->n_literals > max_clause_literals){
             max_clause_literals = c->n_literals;
         }
     }
 
-    for(ull i = 0; i < max_clause_literals; i++){
+    for(int i = 0; i < max_clause_literals; i++){
         auto engine = new default_random_engine(std::random_device{}()); // Get the system default random generator with a random seed
         rbg_ensemble.push_back(new RBG<default_random_engine>(*engine)); // Initialise an instance of a random boolean generator...
     }
@@ -35,7 +35,7 @@ SubSATInstance::SubSATInstance(VariablesArray* variables, vector<Clause*>* claus
  * satisfied i.e. the SAT instance is satisfied, we return a nullptr.
  */
 Clause* SubSATInstance::is_satisfied(){
-    for(ull i = 0; i < n_clauses; i++){ // For each clause...
+    for(uint32_t i = 0; i < n_clauses; i++){ // For each clause...
         // Fetch the clause specified at the (class variable) index C, and check if it is satisfied...
         if((clauses->at(C))->is_not_satisfied(var_arr)){ // If it is not satisfied, return a ptr to the Clause instance
             return clauses->at(C);
@@ -57,8 +57,8 @@ void SubSATInstance::solve(){
     if(parallel_resample){
         while(c){ // While there exists a clause c which is not satisfied...
             // For every variable in the clause (obtained by left shifting by 1 the literal encoding), randomly re-sample
-            #pragma omp parallel for schedule(dynamic) default(none) if (parallel_resample <= c->n_literals) shared(c)
-            for(ull i = 0; i < c->n_literals; i++){
+            #pragma omp parallel for schedule(dynamic) default(none) shared(c)
+            for(int i = 0; i < c->n_literals; i++){
                 (var_arr->vars)[(c->literals)[i] >> 1] = (rbg_ensemble.at(i))->sample();
             }
 
@@ -68,7 +68,7 @@ void SubSATInstance::solve(){
     else{
         while(c){ // While there exists a clause c which is not satisfied...
             // For every variable in the clause (obtained by left shifting by 1 the literal encoding), randomly re-sample
-            for(ull i = 0; i < c->n_literals; i++){
+            for(int i = 0; i < c->n_literals; i++){
                 (var_arr->vars)[(c->literals)[i] >> 1] = (rbg_ensemble.at(i))->sample();
             }
 

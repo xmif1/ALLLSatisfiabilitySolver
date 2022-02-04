@@ -22,7 +22,7 @@ class SubSATInstance{
         vector<Clause*>* clauses;
         VariablesArray* var_arr;
 
-        SubSATInstance(VariablesArray* variables, vector<Clause*>* clauses, ull parallel_resample = 0);
+        SubSATInstance(VariablesArray* variables, vector<Clause*>* clauses, int parallel_resample = 0);
 
         void solve();
         Clause* is_satisfied();
@@ -34,8 +34,8 @@ class SubSATInstance{
 
         vector<RBG<default_random_engine>*> rbg_ensemble;
 
-        ull parallel_resample;
-        ull n_clauses;
+        int parallel_resample;
+        uint32_t n_clauses;
         ull C;
 };
 

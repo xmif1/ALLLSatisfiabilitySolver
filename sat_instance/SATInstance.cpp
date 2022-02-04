@@ -35,7 +35,7 @@ SATInstance::SATInstance(const string& cnf_file_name, vector<Clause*>* clauses){
     for(c = 0; c < c_num; c++){ // For each read clauses, create a new Clause instance with its literals encoded in the
                                 // aforementioned manner
         // l_c_num[c] = # of signed literals in clause c
-        ull* literals; literals = new ull[l_c_num[c]];
+        uint32_t* literals; literals = new uint32_t[l_c_num[c]];
 
         for(l_c = 0; l_c < l_c_num[c]; l_c++){ // For every literal in the clause...
             /* Note that the DIMACS format uses 0 as a special character, hence the variables are labelled as positive
@@ -78,15 +78,15 @@ bool SATInstance::dependent_clauses(Clause* c1, Clause* c2){
 }
 
 vector<vector<Clause*>*>* SATInstance::getDependencyGraphComponents(vector<Clause*>* clauses){
-    ull n_clauses = clauses->size();
+    uint32_t n_clauses = clauses->size();
 
     auto component = new vector<Clause*>;
     auto component_clauses = new vector<vector<Clause*>*>;
 
-    vector<ull> neighbours;
-    vector<ull> neighbours_queue;
-    vector<ull> remaining_clauses;
-    for(ull u = 0; u < n_clauses; u++){ remaining_clauses.push_back(u);}
+    vector<uint32_t> neighbours;
+    vector<uint32_t> neighbours_queue;
+    vector<uint32_t> remaining_clauses;
+    for(uint32_t u = 0; u < n_clauses; u++){ remaining_clauses.push_back(u);}
 
     while(!remaining_clauses.empty()){
         if(neighbours.empty()){
@@ -135,14 +135,14 @@ vector<vector<Clause*>*>* SATInstance::getDependencyGraphComponents(vector<Claus
 // SAT solver based on the Algorithmic Lovasz Local Lemma of Moser and Tardos (2010)
 VariablesArray* SATInstance::solve(vector<SubSATInstance*>* subInstances, bool parallel) const{
     #pragma omp parallel for if(parallel) schedule(dynamic) default(none) shared(subInstances)
-    for(ull i = 0; i < subInstances->size(); i++){
+    for(int i = 0; i < subInstances->size(); i++){
         subInstances->at(i)->solve();
     }
 
     return var_arr;
 }
 
-vector<SubSATInstance*>* SATInstance::createSubSATInstances(vector<vector<Clause*>*>* components, ull parallel_resample) const{
+vector<SubSATInstance*>* SATInstance::createSubSATInstances(vector<vector<Clause*>*>* components, int parallel_resample) const{
     auto subInstance = new vector<SubSATInstance*>;
     for(auto c: *components){
         subInstance->push_back(new SubSATInstance(var_arr, c, parallel_resample));

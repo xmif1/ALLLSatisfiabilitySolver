@@ -23,15 +23,15 @@ using namespace std;
  */
 class SATInstance{
     public:
-        ull n_vars;
-        ull n_literals;
-        ull n_clauses;
+        uint32_t n_vars;
+        uint32_t n_literals;
+        uint32_t n_clauses;
         VariablesArray* var_arr;
 
         SATInstance(const string& cnf_file_name, vector<Clause*>* clauses);
 
         VariablesArray* solve(vector<SubSATInstance*>* subInstances, bool parallel = true) const;
-        vector<SubSATInstance*>* createSubSATInstances(vector<vector<Clause*>*>* components, ull parallel_resample = 0) const;
+        vector<SubSATInstance*>* createSubSATInstances(vector<vector<Clause*>*>* components, int parallel_resample = 0) const;
         bool verify_validity(vector<Clause*>* clauses) const;
 
         static vector<vector<Clause*>*>* getDependencyGraphComponents(vector<Clause*>* clauses);

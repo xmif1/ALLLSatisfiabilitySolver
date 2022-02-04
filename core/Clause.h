@@ -15,11 +15,11 @@
  */
 class Clause{
     public:
-        ull* literals;
-        ull n_literals;
-        ull degree = 0;
+        uint32_t* literals;
+        int n_literals;
+        int degree = 0;
 
-        Clause(ull* literals, ull n_literals);
+        Clause(uint32_t* literals, int n_literals);
 
         bool is_not_satisfied(VariablesArray* var_arr) const;
 };
