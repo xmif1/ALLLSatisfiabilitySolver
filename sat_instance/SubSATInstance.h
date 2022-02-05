@@ -22,10 +22,10 @@ class SubSATInstance{
         vector<Clause*>* clauses;
         VariablesArray* var_arr;
 
-        SubSATInstance(VariablesArray* variables, vector<Clause*>* clauses, int parallel_resample = 0);
+        SubSATInstance(VariablesArray* variables, vector<Clause*>* clauses, int n_threads = 0);
 
         void solve();
-        Clause* is_satisfied();
+        Clause* sequential_is_satisfied();
         bool is_ALLL_compatible() const;
 
     private:
@@ -34,9 +34,12 @@ class SubSATInstance{
 
         vector<RBG<default_random_engine>*> rbg_ensemble;
 
-        int parallel_resample;
+        int n_threads;
         uint32_t n_clauses;
         ull C;
+
+        vector<Clause*>* parallel_k_partite_mis(vector<vector<Clause*>*>* sets);
+        static vector<Clause*>* bipartite_mis(vector<Clause*>* set1, vector<Clause*>* set2);
 };
 
 

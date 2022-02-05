@@ -59,24 +59,6 @@ SATInstance::SATInstance(const string& cnf_file_name, vector<Clause*>* clauses){
     var_arr = new VariablesArray(n_vars);
 }
 
-// Given two Clause instances, establishes whether they are dependent or not. The criteria of dependency is having one
-// or more variables in common between the literals of the two clauses.
-bool SATInstance::dependent_clauses(Clause* c1, Clause* c2){
-    // For every pair (x, y) of literals between the two clauses...
-    for(int i = 0; i < c1->n_literals; i++){
-        for(int j = 0; j < c2->n_literals; j++){
-            // If the variable associated with x is equal to the variable associated with y, then the clauses are
-            // dependent and hence we return true (no need to check further - we require AT LEAST one).
-            if(((c1->literals)[i] >> 1) == ((c2->literals)[j] >> 1)){
-                return true;
-            }
-        }
-    }
-
-    // Otherwise, we return false (independent if FOR ALL literal pairs, the underlying variables are distinct)
-    return false;
-}
-
 vector<vector<Clause*>*>* SATInstance::getDependencyGraphComponents(vector<Clause*>* clauses){
     uint32_t n_clauses = clauses->size();
 
@@ -99,7 +81,7 @@ vector<vector<Clause*>*>* SATInstance::getDependencyGraphComponents(vector<Claus
         for(auto n: neighbours){
             auto idx = remaining_clauses.begin();
             while(idx != remaining_clauses.end()){
-                if(dependent_clauses(clauses->at(n), clauses->at(*idx))){
+                if((clauses->at(n))->dependent_clauses(clauses->at(*idx))){
                     (clauses->at(n))->degree += 1;
                     (clauses->at(*idx))->degree += 1;
 
@@ -134,7 +116,7 @@ vector<vector<Clause*>*>* SATInstance::getDependencyGraphComponents(vector<Claus
 
 // SAT solver based on the Algorithmic Lovasz Local Lemma of Moser and Tardos (2010)
 VariablesArray* SATInstance::solve(vector<SubSATInstance*>* subInstances, bool parallel) const{
-    #pragma omp parallel for if(parallel) schedule(dynamic) default(none) shared(subInstances)
+    // #pragma omp parallel for if(parallel) schedule(dynamic) default(none) shared(subInstances)
     for(int i = 0; i < subInstances->size(); i++){
         subInstances->at(i)->solve();
     }
@@ -142,10 +124,10 @@ VariablesArray* SATInstance::solve(vector<SubSATInstance*>* subInstances, bool p
     return var_arr;
 }
 
-vector<SubSATInstance*>* SATInstance::createSubSATInstances(vector<vector<Clause*>*>* components, int parallel_resample) const{
+vector<SubSATInstance*>* SATInstance::createSubSATInstances(vector<vector<Clause*>*>* components, int n_threads) const{
     auto subInstance = new vector<SubSATInstance*>;
     for(auto c: *components){
-        subInstance->push_back(new SubSATInstance(var_arr, c, parallel_resample));
+        subInstance->push_back(new SubSATInstance(var_arr, c, n_threads));
     }
 
     return subInstance;
@@ -153,7 +135,7 @@ vector<SubSATInstance*>* SATInstance::createSubSATInstances(vector<vector<Clause
 
 bool SATInstance::verify_validity(vector<Clause*>* clauses) const{
     for(auto c: *clauses){
-        if(c->is_not_satisfied(var_arr)){
+        if(c->is_not_satisfied(var_arr->vars)){
             return false;
         }
     }

@@ -21,7 +21,8 @@ class Clause{
 
         Clause(uint32_t* literals, int n_literals);
 
-        bool is_not_satisfied(VariablesArray* var_arr) const;
+        bool is_not_satisfied(const bool* var_arr) const;
+        bool dependent_clauses(Clause* c) const;
 };
 
 

@@ -9,7 +9,7 @@ void output(const string& str, ofstream& out_f);
 
 int main(int argc, char *argv[]){
     bool parallel = false;
-    int min_parallel_clauses = 0;
+    int n_threads = 0;
 
     string cnf_fpath;
 
@@ -24,10 +24,13 @@ int main(int argc, char *argv[]){
         cnf_fpath = argv[2];
         parallel = true;
     }
-    else if(argc == 4 && strcmp(argv[1], "-p") == 0 && strcmp(argv[2], "-l") != 0){
+    else if(argc == 4 && strcmp(argv[1], "-p") == 0){
         cnf_fpath = argv[3];
         parallel = true;
-        min_parallel_clauses = stoll(argv[2]);
+        n_threads = stoi(argv[2]);
+        if(n_threads > omp_get_num_procs() || n_threads < 2){
+            throw std::runtime_error("Invalid number of threads specified...exiting...");
+        }
     }
     else if(argc == 2){
         cnf_fpath = argv[1];
@@ -57,7 +60,7 @@ int main(int argc, char *argv[]){
         components->push_back(clauses);
     }
 
-    auto subSATInstances = satInstance->createSubSATInstances(components, min_parallel_clauses);
+    auto subSATInstances = satInstance->createSubSATInstances(components, n_threads);
     output("# of components = " + to_string(subSATInstances->size()) + "\n\n", out_f);
 
     for(ull i = 0; i < subSATInstances->size(); i++){
