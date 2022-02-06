@@ -20,9 +20,18 @@ SubSATInstance::SubSATInstance(VariablesArray* variables, vector<Clause*>* claus
     }
 
     n_clauses = (this->clauses)->size(); // Number of clauses in SAT instance
-    C = P_9223372036854775783 % n_clauses; // Starting seed for an LCG based index to the this.clauses vector, which pseudo-randomly
-                                // visits all the clauses exactly once with a period of n_clauses, allowing for efficient
-                                // 'shuffling' of the clauses vector.
+
+    // Starting seed for an LCG based index to the this.clauses vector, which pseudo-randomly visits all the clauses
+    // exactly once with a period of n_clauses, allowing for efficient 'shuffling' of the clauses vector; in case of
+    // multi--threading, we use one for each chunk.
+    if(n_threads < 2){
+        C.push_back(P_9223372036854775783 % n_clauses);
+    }
+    else{
+        for(int t = 0; t < n_threads; t++){
+            C.push_back(P_9223372036854775783 % n_clauses);
+        }
+    }
 }
 
 /* Checks whether the SAT instance is satisfied by a given variable assignment (specified as a VariablesArray instance),
@@ -35,15 +44,15 @@ SubSATInstance::SubSATInstance(VariablesArray* variables, vector<Clause*>* claus
 Clause* SubSATInstance::sequential_is_satisfied(){
     for(uint32_t i = 0; i < n_clauses; i++){ // For each clause...
         // Fetch the clause specified at the (class variable) index C, and check if it is satisfied...
-        if((clauses->at(C))->is_not_satisfied(var_arr->vars)){ // If it is not satisfied, return a ptr to the Clause instance
-            return clauses->at(C);
+        if((clauses->at(C[0]))->is_not_satisfied(var_arr->vars)){ // If it is not satisfied, return a ptr to the Clause instance
+            return clauses->at(C[0]);
         }
         else{ /* Otherwise, calculate the next index C by means of the LCG; note that the LCG has a period of n_clauses
                * and hence we iterate over each clause exactly once, in a non-linear fashion; this is equivalent to a
                * pseudo-random shuffling of the clauses vector, and is required for optimal convergence of the Algorithmic
                * Lovasz Local Lemma method.
                */
-            C = (C + P_9223372036854775783) % n_clauses;
+            C[0] = (C[0] + P_9223372036854775783) % n_clauses;
         }
     }
 
@@ -62,30 +71,50 @@ void SubSATInstance::solve(){
             #pragma omp parallel for schedule(dynamic) default(none) shared(unsat_clauses)
             for(uint32_t c = 0; c < n_clauses; c++){
                 if((clauses->at(c))->is_not_satisfied(var_arr->vars)){
-                    int tid = omp_get_thread_num();
-                    bool dependent = false;
-
-                    for(auto c0: *(unsat_clauses->at(tid))){
-                        if(clauses->at(c)->dependent_clauses(c0)){
-                            dependent = true;
-                        }
-                    }
-
-                    if(!dependent){
-                        (unsat_clauses->at(tid))->push_back(clauses->at(c));
-                    }
+                    (unsat_clauses->at(omp_get_thread_num()))->push_back(clauses->at(c));
                 }
             }
 
-            auto max_indep_set = parallel_k_partite_mis(unsat_clauses);
-            if(max_indep_set->empty()){
+            auto indep_unsat_clauses = new vector<vector<Clause*>*>;
+            for(int t = 0; t < n_threads; t++){
+                indep_unsat_clauses->push_back(new vector<Clause*>);
+            }
+
+            #pragma omp parallel for schedule(static, 1) default(none) shared(unsat_clauses, indep_unsat_clauses)
+            for(int t = 0; t < n_threads; t++){
+                uint32_t chunk_size = unsat_clauses->at(t)->size();
+                C[t] = C[t] % chunk_size;
+
+                for(uint32_t i = 0; i < chunk_size; i++){
+                    bool independent = true;
+                    for(auto c: *(indep_unsat_clauses->at(t))){
+                        if(((unsat_clauses->at(t))->at(C[t]))->dependent_clauses(c)){
+                            independent = false;
+                            break;
+                        }
+                    }
+
+                    if(independent){
+                        (indep_unsat_clauses->at(t))->push_back((unsat_clauses->at(t))->at(C[t]));
+                    }
+
+                    C[t] = (C[t] + P_9223372036854775783) % chunk_size;
+                }
+
+                delete unsat_clauses->at(t);
+            }
+
+            delete unsat_clauses;
+
+            auto max_indep_unsat_clauses = parallel_k_partite_mis(indep_unsat_clauses);
+            if(max_indep_unsat_clauses->empty()){
                 break;
             }
 
-            #pragma omp parallel for schedule(dynamic) default(none) shared(max_indep_set)
-            for(uint32_t c = 0; c < max_indep_set->size(); c++){
-                for(int i = 0; i < (max_indep_set->at(c))->n_literals; i++){
-                    (var_arr->vars)[((max_indep_set->at(c))->literals)[i] >> 1] = (rbg_ensemble.at(omp_get_thread_num()))->sample();
+            #pragma omp parallel for schedule(dynamic) default(none) shared(max_indep_unsat_clauses)
+            for(uint32_t c = 0; c < max_indep_unsat_clauses->size(); c++){
+                for(int i = 0; i < (max_indep_unsat_clauses->at(c))->n_literals; i++){
+                    (var_arr->vars)[((max_indep_unsat_clauses->at(c))->literals)[i] >> 1] = (rbg_ensemble[omp_get_thread_num()])->sample();
                 }
             }
         }
@@ -96,7 +125,7 @@ void SubSATInstance::solve(){
         while(c){ // While there exists a clause c which is not satisfied...
             // For every variable in the clause (obtained by left shifting by 1 the literal encoding), randomly re-sample
             for(int i = 0; i < c->n_literals; i++){
-                (var_arr->vars)[(c->literals)[i] >> 1] = (rbg_ensemble.at(0))->sample();
+                (var_arr->vars)[(c->literals)[i] >> 1] = (rbg_ensemble[0])->sample();
             }
 
             c = sequential_is_satisfied();
@@ -116,12 +145,6 @@ bool SubSATInstance::is_ALLL_compatible() const{
 
 vector<Clause*>* SubSATInstance::bipartite_mis(vector<Clause*>* set1, vector<Clause*>* set2){
     auto result = new vector<Clause*>;
-
-    if(set1->size() < set2->size()){
-        auto temp = set1;
-        set1 = set2;
-        set2 = temp;
-    }
 
     auto idx1 = set1->begin();
     while(idx1 != set1->end()){
@@ -173,7 +196,7 @@ vector<Clause*>* SubSATInstance::parallel_k_partite_mis(vector<vector<Clause*>*>
             joined_sets->push_back(nullptr);
         }
 
-        // #pragma omp parallel for schedule(static, 1) default(none) shared(n_pairs, offset, sets, joined_sets)
+        #pragma omp parallel for schedule(static, 1) default(none) shared(n_pairs, offset, sets, joined_sets)
         for(int t = 0; t < n_pairs; t++){
             joined_sets->at(offset + t) = bipartite_mis(sets->at(2 * t), sets->at((2 * t) + 1));
 

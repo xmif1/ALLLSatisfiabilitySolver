@@ -134,7 +134,7 @@ bool cnf_data_read(const string& cnf_file_name, int v_num, int c_num,
 //
 //  Licensing:
 //
-//    This code is distributed under the GNU LGPL license. 
+//    This code is distributed under the GNU LGPL license.
 //
 //  Modified:
 //
@@ -152,15 +152,15 @@ bool cnf_data_read(const string& cnf_file_name, int v_num, int c_num,
 //
 //    Input, int C_NUM, the number of clauses.
 //
-//    Input, int L_NUM, the number of signed literals.
+//    Input, int l_num, the number of signed literals.
 //
 //    Output, int L_C_NUM[C_NUM], the number of signed
 //    literals occuring in each clause.
 //
-//    Output, int L_VAL[L_NUM], a list of all the signed 
+//    Output, int L_VAL[L_NUM], a list of all the signed
 //    literals in all the clauses, ordered by clause.
 //
-//    Output, bool CNF_DATA_READ, is TRUE if there was an error during 
+//    Output, bool CNF_DATA_READ, is TRUE if there was an error during
 //    the read.
 //
 {
@@ -175,7 +175,7 @@ bool cnf_data_read(const string& cnf_file_name, int v_num, int c_num,
   string rest;
   int v_num2;
   string word;
-  
+
   error = false;
 
   input.open(cnf_file_name.c_str());
@@ -192,7 +192,7 @@ bool cnf_data_read(const string& cnf_file_name, int v_num, int c_num,
 //
   while(true){
     getline(input, line);
-    
+
     if(input.eof()){
       cout << "\n";
       cout << "CNF_DATA_READ - Fatal error!\n";
@@ -234,8 +234,8 @@ bool cnf_data_read(const string& cnf_file_name, int v_num, int c_num,
 //
 //  Expect the string 'CNF'
 //
-  if(ch_eqi(line[0], 'c') && 
-       ch_eqi(line[1], 'n') && 
+  if(ch_eqi(line[0], 'c') &&
+       ch_eqi(line[1], 'n') &&
        ch_eqi(line[2], 'f')){
   }
   else{
@@ -325,10 +325,10 @@ bool cnf_data_read(const string& cnf_file_name, int v_num, int c_num,
   input.close();
 
   return error;
-} 
+}
 //****************************************************************************80
 
-bool cnf_data_write(int c_num, int l_num, const int l_c_num[], int l_val[], 
+bool cnf_data_write(int c_num, int l_num, const int l_c_num[], int l_val[],
   ofstream &output_unit)
 
 //****************************************************************************80
@@ -339,7 +339,7 @@ bool cnf_data_write(int c_num, int l_num, const int l_c_num[], int l_val[],
 //
 //  Licensing:
 //
-//    This code is distributed under the GNU LGPL license. 
+//    This code is distributed under the GNU LGPL license.
 //
 //  Modified:
 //
@@ -353,12 +353,12 @@ bool cnf_data_write(int c_num, int l_num, const int l_c_num[], int l_val[],
 //
 //    Input, int C_NUM, the number of clauses.
 //
-//    Input, int L_NUM, the total number of signed literals.
+//    Input, int l_num, the total number of signed literals.
 //
 //    Input, int L_C_NUM[C_NUM], the number of signed
 //    literals occuring in each clause.
 //
-//    Input, int L_VAL[L_NUM], a list of all the signed 
+//    Input, int L_VAL[L_NUM], a list of all the signed
 //    literals in all the clauses, ordered by clause.
 //
 //    Input, ofstream &OUTPUT_UNIT, the output unit.
@@ -389,7 +389,7 @@ bool cnf_data_write(int c_num, int l_num, const int l_c_num[], int l_val[],
 }
 //****************************************************************************80
 
-bool cnf_evaluate(int v_num, int c_num, int l_num, const int l_c_num[], int l_val[], 
+bool cnf_evaluate(int v_num, int c_num, int l_num, const int l_c_num[], int l_val[],
   const bool v_val[])
 
 //****************************************************************************80
@@ -404,7 +404,7 @@ bool cnf_evaluate(int v_num, int c_num, int l_num, const int l_c_num[], int l_va
 //
 //  Licensing:
 //
-//    This code is distributed under the GNU LGPL license. 
+//    This code is distributed under the GNU LGPL license.
 //
 //  Modified:
 //
@@ -420,12 +420,12 @@ bool cnf_evaluate(int v_num, int c_num, int l_num, const int l_c_num[], int l_va
 //
 //    Input, int C_NUM, the number of clauses.
 //
-//    Input, int L_NUM, the total number of signed literals.
+//    Input, int l_num, the total number of signed literals.
 //
 //    Input, int L_C_NUM[C_NUM], the number of signed
 //    literals occuring in each clause.
 //
-//    Input, int L_VAL[L_NUM], a list of all the signed 
+//    Input, int L_VAL[L_NUM], a list of all the signed
 //    literals in all the clauses, ordered by clause.
 //
 //    Input, bool V_VAL[V_NUM], the values assigned to the variables.
@@ -453,11 +453,18 @@ bool cnf_evaluate(int v_num, int c_num, int l_num, const int l_c_num[], int l_va
     c_val = false;
     for(l_c = 0; l_c < l_c_num[c]; l_c++){
       s_val =(0 < l_val[l]);
-      v_index = abs(l_val[l]);
+
+      if(0 <= l_val[l]){
+        v_index = l_val[l];
+      }
+      else{
+        v_index = -1 * l_val[l];
+      }
+
       l = l + 1;
 //
 //  The signed literal is true if the sign "equals" the value.
-//  Note that we CAN'T exit the loop because we need to run out the 
+//  Note that we CAN'T exit the loop because we need to run out the
 //  L index!
 //
       if(v_val[v_index-1] == s_val){
@@ -487,7 +494,7 @@ bool cnf_header_read(const string& cnf_file_name, int *v_num, int *c_num, int *l
 //
 //  Licensing:
 //
-//    This code is distributed under the GNU LGPL license. 
+//    This code is distributed under the GNU LGPL license.
 //
 //  Modified:
 //
@@ -507,7 +514,7 @@ bool cnf_header_read(const string& cnf_file_name, int *v_num, int *c_num, int *l
 //
 //    Output, int *L_NUM, the number of signed literals.
 //
-//    Output, bool CNF_HEADER_READ, is TRUE if there was an error during 
+//    Output, bool CNF_HEADER_READ, is TRUE if there was an error during
 //    the read.
 //
 {
@@ -518,7 +525,7 @@ bool cnf_header_read(const string& cnf_file_name, int *v_num, int *c_num, int *l
   string line;
   string rest;
   string word;
-  
+
   error = false;
 
   input.open(cnf_file_name.c_str());
@@ -535,7 +542,7 @@ bool cnf_header_read(const string& cnf_file_name, int *v_num, int *c_num, int *l
 //
   while(true){
     getline(input, line);
-    
+
     if(input.eof()){
       cout << "\n";
       cout << "CNF_HEADER_READ - Fatal error!\n";
@@ -577,8 +584,8 @@ bool cnf_header_read(const string& cnf_file_name, int *v_num, int *c_num, int *l
 //
 //  Expect the string 'CNF'
 //
-  if(ch_eqi(line[0], 'c') && 
-       ch_eqi(line[1], 'n') && 
+  if(ch_eqi(line[0], 'c') &&
+       ch_eqi(line[1], 'n') &&
        ch_eqi(line[2], 'f')){
   }
   else{
@@ -695,10 +702,10 @@ bool cnf_header_read(const string& cnf_file_name, int *v_num, int *c_num, int *l
   input.close();
 
   return error;
-} 
+}
 //****************************************************************************80
 
-bool cnf_header_write(int v_num, int c_num, const string& output_name, 
+bool cnf_header_write(int v_num, int c_num, const string& output_name,
   ofstream &output_unit)
 
 //****************************************************************************80
@@ -709,7 +716,7 @@ bool cnf_header_write(int v_num, int c_num, const string& output_name,
 //
 //  Licensing:
 //
-//    This code is distributed under the GNU LGPL license. 
+//    This code is distributed under the GNU LGPL license.
 //
 //  Modified:
 //
@@ -737,7 +744,7 @@ bool cnf_header_write(int v_num, int c_num, const string& output_name,
   output_unit << "c " << output_name << "\n";
   output_unit << "c\n";
   output_unit << "p cnf " << v_num << " " << c_num << "\n";
-  
+
   return error;
 }
 //****************************************************************************80
@@ -752,7 +759,7 @@ void cnf_print(int v_num, int c_num, int l_num, int l_c_num[], int l_val[])
 //
 //  Licensing:
 //
-//    This code is distributed under the GNU LGPL license. 
+//    This code is distributed under the GNU LGPL license.
 //
 //  Modified:
 //
@@ -768,12 +775,12 @@ void cnf_print(int v_num, int c_num, int l_num, int l_c_num[], int l_val[])
 //
 //    Input, int C_NUM, the number of clauses.
 //
-//    Input, int L_NUM, the total number of signed literals.
+//    Input, int l_num, the total number of signed literals.
 //
 //    Input, int L_C_NUM[C_NUM], the number of signed
 //    literals occuring in each clause.
 //
-//    Input, int L_VAL[L_NUM], a list of all the signed 
+//    Input, int L_VAL[L_NUM], a list of all the signed
 //    literals in all the clauses, ordered by clause.
 //
 {
@@ -800,7 +807,7 @@ void cnf_print(int v_num, int c_num, int l_num, int l_c_num[], int l_val[])
 }
 //****************************************************************************80
 
-bool cnf_write(int v_num, int c_num, int l_num, int l_c_num[], int l_val[], 
+bool cnf_write(int v_num, int c_num, int l_num, int l_c_num[], int l_val[],
   const string& output_name)
 
 //****************************************************************************80
@@ -811,7 +818,7 @@ bool cnf_write(int v_num, int c_num, int l_num, int l_c_num[], int l_val[],
 //
 //  Licensing:
 //
-//    This code is distributed under the GNU LGPL license. 
+//    This code is distributed under the GNU LGPL license.
 //
 //  Modified:
 //
@@ -827,12 +834,12 @@ bool cnf_write(int v_num, int c_num, int l_num, int l_c_num[], int l_val[],
 //
 //    Input, int C_NUM, the number of clauses.
 //
-//    Input, int L_NUM, the total number of signed literals.
+//    Input, int l_num, the total number of signed literals.
 //
 //    Input, int L_C_NUM[C_NUM], the number of signed
 //    literals occuring in each clause.
 //
-//    Input, int L_VAL[L_NUM], a list of all the signed 
+//    Input, int L_VAL[L_NUM], a list of all the signed
 //    literals in all the clauses, ordered by clause.
 //
 //    Input, string OUTPUT_NAME, the name of the output file.
@@ -895,7 +902,7 @@ int i4_power(int i, int j)
 //
 //  Licensing:
 //
-//    This code is distributed under the GNU LGPL license. 
+//    This code is distributed under the GNU LGPL license.
 //
 //  Modified:
 //
@@ -969,7 +976,7 @@ void lvec_next(int n, bool lvec[])
 //    The vectors have the order
 //
 //      (0,0,...,0),
-//      (0,0,...,1), 
+//      (0,0,...,1),
 //      ...
 //      (1,1,...,1)
 //
@@ -993,7 +1000,7 @@ void lvec_next(int n, bool lvec[])
 //
 //  Licensing:
 //
-//    This code is distributed under the GNU LGPL license. 
+//    This code is distributed under the GNU LGPL license.
 //
 //  Modified:
 //
@@ -1008,7 +1015,7 @@ void lvec_next(int n, bool lvec[])
 //    Input, int N, the dimension of the vectors.
 //
 //    Input/output, bool LVEC[N], on output, the successor to the
-//    input vector.  
+//    input vector.
 //
 {
   int i;
@@ -1047,7 +1054,7 @@ string s_adjustl(string s1)
 //
 //  Licensing:
 //
-//    This code is distributed under the GNU LGPL license. 
+//    This code is distributed under the GNU LGPL license.
 //
 //  Modified:
 //
@@ -1120,7 +1127,7 @@ string s_blanks_delete(string s)
 //
 //  Licensing:
 //
-//    This code is distributed under the GNU LGPL license. 
+//    This code is distributed under the GNU LGPL license.
 //
 //  Modified:
 //
@@ -1189,7 +1196,7 @@ bool s_eqi(string s1, string s2)
 //
 //  Licensing:
 //
-//    This code is distributed under the GNU LGPL license. 
+//    This code is distributed under the GNU LGPL license.
 //
 //  Modified:
 //
@@ -1203,7 +1210,7 @@ bool s_eqi(string s1, string s2)
 //
 //    Input, string S1, S2, two strings.
 //
-//    Output, bool S_EQI, is true if the strings are equal. 
+//    Output, bool S_EQI, is true if the strings are equal.
 //
 {
   int i;
@@ -1238,14 +1245,14 @@ bool s_eqi(string s1, string s2)
       if(s1[i] != ' '){
         return false;
       }
-    } 
+    }
   }
   else if(nchar < s2_length){
     for(i = nchar; i < s2_length; i++){
       if(s2[i] != ' '){
         return false;
       }
-    } 
+    }
   }
 
   return true;
@@ -1262,7 +1269,7 @@ int s_len_trim(string s)
 //
 //  Licensing:
 //
-//    This code is distributed under the GNU LGPL license. 
+//    This code is distributed under the GNU LGPL license.
 //
 //  Modified:
 //
@@ -1305,7 +1312,7 @@ int s_to_i4(string s, int *last, bool *error)
 //
 //  Licensing:
 //
-//    This code is distributed under the GNU LGPL license. 
+//    This code is distributed under the GNU LGPL license.
 //
 //  Modified:
 //
@@ -1424,7 +1431,7 @@ void s_word_extract_first(string s, string &s1, string &s2)
 //
 //  Licensing:
 //
-//    This code is distributed under the GNU LGPL license. 
+//    This code is distributed under the GNU LGPL license.
 //
 //  Modified:
 //

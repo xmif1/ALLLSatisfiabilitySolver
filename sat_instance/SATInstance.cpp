@@ -13,7 +13,7 @@
  *     shift i.e. the variable v associated with a literal l is: v = l >> 1.
  */
 SATInstance::SATInstance(const string& cnf_file_name, vector<Clause*>* clauses){
-    int l_num, c_num, v_num;
+    int c_num, v_num, l_num;
     int* l_c_num;
     int* l_val;
 
@@ -60,15 +60,15 @@ SATInstance::SATInstance(const string& cnf_file_name, vector<Clause*>* clauses){
 }
 
 vector<vector<Clause*>*>* SATInstance::getDependencyGraphComponents(vector<Clause*>* clauses){
-    uint32_t n_clauses = clauses->size();
+    int n_clauses = clauses->size();
 
     auto component = new vector<Clause*>;
     auto component_clauses = new vector<vector<Clause*>*>;
 
-    vector<uint32_t> neighbours;
-    vector<uint32_t> neighbours_queue;
-    vector<uint32_t> remaining_clauses;
-    for(uint32_t u = 0; u < n_clauses; u++){ remaining_clauses.push_back(u);}
+    vector<int> neighbours;
+    vector<int> neighbours_queue;
+    vector<int> remaining_clauses;
+    for(int u = 0; u < n_clauses; u++){ remaining_clauses.push_back(u);}
 
     while(!remaining_clauses.empty()){
         if(neighbours.empty()){

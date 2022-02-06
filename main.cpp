@@ -51,14 +51,7 @@ int main(int argc, char *argv[]){
            "\nL_NUM = " + to_string(satInstance->n_literals) + "\n\n", out_f);
 
     auto components = new vector<vector<Clause*>*>;
-    if(parallel){
-        // Then get the Laplacian describing the dependency graph of the SAT instance, along the the vertex sets of the
-        // components of the dependency graph
-        components = SATInstance::getDependencyGraphComponents(clauses);
-    }
-    else{
-        components->push_back(clauses);
-    }
+    components->push_back(clauses);
 
     auto subSATInstances = satInstance->createSubSATInstances(components, n_threads);
     output("# of components = " + to_string(subSATInstances->size()) + "\n\n", out_f);

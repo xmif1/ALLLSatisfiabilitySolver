@@ -36,7 +36,7 @@ class SubSATInstance{
 
         int n_threads;
         uint32_t n_clauses;
-        ull C;
+        vector<ull> C;
 
         vector<Clause*>* parallel_k_partite_mis(vector<vector<Clause*>*>* sets);
         static vector<Clause*>* bipartite_mis(vector<Clause*>* set1, vector<Clause*>* set2);
