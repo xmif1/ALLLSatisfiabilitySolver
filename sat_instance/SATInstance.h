@@ -5,16 +5,24 @@
 #ifndef ALLLSATISFIABILITYSOLVER_SATINSTANCE_H
 #define ALLLSATISFIABILITYSOLVER_SATINSTANCE_H
 
+#include <iostream>
+#include <utility>
+#include <vector>
 #include <random>
+#include <set>
 #include <map>
+
 #include <omp.h>
 
 #include "../cnf_io/cnf_io.h"
 
-#include "SubSATInstance.h"
 #include "../core/RandomBoolGenerator.h"
+#include "../core/VariablesArray.h"
+#include "../core/Clause.h"
 
 using namespace std;
+
+typedef vector<Clause*> ClausesArray;
 
 /* Represents a CNF SAT instance loaded from a DIMACS-formatted file, providing a number of functions to:
  *   i. Generate the Laplacian of the (full) dependency graph between the clauses of the instance.
@@ -26,15 +34,24 @@ class SATInstance{
         uint32_t n_vars;
         uint32_t n_literals;
         uint32_t n_clauses;
+
         VariablesArray* var_arr;
+        ClausesArray* clauses = new vector<Clause*>;
 
-        SATInstance(const string& cnf_file_name, vector<Clause*>* clauses);
+        explicit SATInstance(const string& cnf_file_name, int n_threads = 0);
 
-        VariablesArray* solve(vector<SubSATInstance*>* subInstances, bool parallel = true) const;
-        vector<SubSATInstance*>* createSubSATInstances(vector<vector<Clause*>*>* components, int n_threads = 0) const;
-        bool verify_validity(vector<Clause*>* clauses) const;
+        VariablesArray* solve();
+        bool verify_validity() const;
 
-        static vector<vector<Clause*>*>* getDependencyGraphComponents(vector<Clause*>* clauses);
+    private:
+        // Prime number for LCG over the clauses array (which should be reasonably large enough...we hope...)
+        const ull P_9223372036854775783 = 9223372036854775783;
+        int n_threads;
+
+        void parallel_solve();
+        void sequential_solve() const;
+        ClausesArray* parallel_k_partite_mis(vector<ClausesArray*>* sets);
+        static ClausesArray* bipartite_mis(ClausesArray* set1, ClausesArray* set2);
 };
 
 

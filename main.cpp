@@ -43,30 +43,11 @@ int main(int argc, char *argv[]){
     ofstream out_f(out_fpath);
 
     // Initialise new SATInstance from specified CNF file
-    auto clauses = new vector<Clause*>;
-    auto satInstance = new SATInstance(cnf_fpath, clauses);
+    auto satInstance = new SATInstance(cnf_fpath, n_threads);
 
     // Display the meta data for monitoring purposes
     output("V_NUM = " + to_string(satInstance->n_vars) + "\nC_NUM = " + to_string(satInstance->n_clauses) +
            "\nL_NUM = " + to_string(satInstance->n_literals) + "\n\n", out_f);
-
-    auto components = new vector<vector<Clause*>*>;
-    components->push_back(clauses);
-
-    auto subSATInstances = satInstance->createSubSATInstances(components, n_threads);
-    output("# of components = " + to_string(subSATInstances->size()) + "\n\n", out_f);
-
-    for(ull i = 0; i < subSATInstances->size(); i++){
-        string alll_str;
-        if(parallel && (subSATInstances->at(i))->is_ALLL_compatible()){
-            alll_str = " (ALLL Compatible)";
-        }
-
-        output("Component " + to_string(i + 1) + alll_str + ": # of clauses = " +
-               to_string((subSATInstances->at(i))->clauses->size()) + "\n", out_f);
-    }
-
-    output("\n", out_f);
 
     // Solve the SAT instance (using the Algorithmic Lovasz Local Lemma)
     // Logging...
@@ -74,7 +55,7 @@ int main(int argc, char *argv[]){
     string log_start = "Log "; output(log_start.append(ctime(&timestart)) + "\tStarting solve...\n", out_f);
     auto start = chrono::high_resolution_clock::now();
 
-    VariablesArray* sat = satInstance->solve(subSATInstances, parallel);
+    VariablesArray* sat = satInstance->solve();
 
     auto stop = chrono::high_resolution_clock::now();
     auto duration = chrono::duration_cast<chrono::microseconds>(stop - start);
@@ -82,7 +63,7 @@ int main(int argc, char *argv[]){
     string log_end = "Log "; output(log_end.append(ctime(&timeend)) + "\tCompleted solve...Duration: " +
                                     to_string(duration.count()) + "\n\n", out_f);
 
-    if(satInstance->verify_validity(clauses)){
+    if(satInstance->verify_validity()){
         // Print the variable assignment for the solution
         output("SATISFIABLE\n", out_f);
 

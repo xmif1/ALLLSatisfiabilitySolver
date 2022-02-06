@@ -17,7 +17,6 @@ class Clause{
     public:
         uint32_t* literals;
         int n_literals;
-        int degree = 0;
 
         Clause(uint32_t* literals, int n_literals);
 

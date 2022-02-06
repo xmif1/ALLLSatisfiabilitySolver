@@ -17,8 +17,6 @@ add_executable(ALLLSatisfiabilitySolver main.cpp
                                         core/RandomBoolGenerator.h
                                         sat_instance/SATInstance.cpp
                                         sat_instance/SATInstance.h
-                                        sat_instance/SubSATInstance.cpp
-                                        sat_instance/SubSATInstance.h
                                         cnf_io/cnf_io.cpp
                                         cnf_io/cnf_io.h)
 target_link_libraries(ALLLSatisfiabilitySolver OpenMP::OpenMP_CXX)

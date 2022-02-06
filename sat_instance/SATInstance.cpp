@@ -12,7 +12,7 @@
  *     is mapped to 2x + 1. For this encoding, we can obtain the variable associated with a literal by a single left
  *     shift i.e. the variable v associated with a literal l is: v = l >> 1.
  */
-SATInstance::SATInstance(const string& cnf_file_name, vector<Clause*>* clauses){
+SATInstance::SATInstance(const string& cnf_file_name, int n_threads){
     int c_num, v_num, l_num;
     int* l_c_num;
     int* l_val;
@@ -56,84 +56,133 @@ SATInstance::SATInstance(const string& cnf_file_name, vector<Clause*>* clauses){
     n_vars = v_num; // Number of variables in SAT instance
     n_clauses = c_num; // Number of clauses in SAT instance
     n_literals = l_num; // Number of literals in SAT instance
-    var_arr = new VariablesArray(n_vars);
-}
-
-vector<vector<Clause*>*>* SATInstance::getDependencyGraphComponents(vector<Clause*>* clauses){
-    int n_clauses = clauses->size();
-
-    auto component = new vector<Clause*>;
-    auto component_clauses = new vector<vector<Clause*>*>;
-
-    vector<int> neighbours;
-    vector<int> neighbours_queue;
-    vector<int> remaining_clauses;
-    for(int u = 0; u < n_clauses; u++){ remaining_clauses.push_back(u);}
-
-    while(!remaining_clauses.empty()){
-        if(neighbours.empty()){
-            neighbours.push_back(remaining_clauses.front());
-            component->push_back(clauses->at(remaining_clauses.front()));
-
-            remaining_clauses.erase(remaining_clauses.begin());
-        }
-
-        for(auto n: neighbours){
-            auto idx = remaining_clauses.begin();
-            while(idx != remaining_clauses.end()){
-                if((clauses->at(n))->dependent_clauses(clauses->at(*idx))){
-                    (clauses->at(n))->degree += 1;
-                    (clauses->at(*idx))->degree += 1;
-
-                    neighbours_queue.push_back(*idx);
-                    component->push_back(clauses->at(*idx));
-
-                    idx = remaining_clauses.erase(idx);
-                }
-                else{
-                    idx++;
-                }
-            }
-        }
-
-        if(neighbours_queue.empty()){
-            neighbours.clear();
-
-            component_clauses->push_back(component);
-            component = new vector<Clause*>;
-        }
-        else{
-            neighbours = neighbours_queue;
-            neighbours_queue.clear();
-        }
-    }
-
-    if(!component->empty()){
-        component_clauses->push_back(component);
-    }
-    return component_clauses;
+    this->n_threads = n_threads; // Number of threads for solving (if using parallel solver)
+    var_arr = new VariablesArray(n_vars); // Encoded variables array
 }
 
 // SAT solver based on the Algorithmic Lovasz Local Lemma of Moser and Tardos (2010)
-VariablesArray* SATInstance::solve(vector<SubSATInstance*>* subInstances, bool parallel) const{
-    // #pragma omp parallel for if(parallel) schedule(dynamic) default(none) shared(subInstances)
-    for(int i = 0; i < subInstances->size(); i++){
-        subInstances->at(i)->solve();
+VariablesArray* SATInstance::solve(){
+    if(n_threads){
+        parallel_solve();
+    }
+    else{
+        sequential_solve();
     }
 
     return var_arr;
 }
 
-vector<SubSATInstance*>* SATInstance::createSubSATInstances(vector<vector<Clause*>*>* components, int n_threads) const{
-    auto subInstance = new vector<SubSATInstance*>;
-    for(auto c: *components){
-        subInstance->push_back(new SubSATInstance(var_arr, c, n_threads));
-    }
+void SATInstance::sequential_solve() const{
+    Clause* unsat_clause;
 
-    return subInstance;
+    auto engine = new default_random_engine(std::random_device{}()); // Get the system default random generator with a random seed
+    auto rbg = new RBG<default_random_engine>(*engine); // Initialise an instance of a random boolean generator...
+    ull iterator = P_9223372036854775783 % n_clauses; // Starting seed for an LCG based index to the this.clauses vector,
+                                                      // which pseudo-randomly visits all the clauses exactly once with
+                                                      // a period of n_clauses, allowing for efficient 'shuffling' of the
+                                                      // clauses vector;
+    bool solved = false;
+    while(!solved){ // While there exists a clause c which is not satisfied...
+        bool unsat_exists = false;
+
+        for(uint32_t i = 0; i < n_clauses; i++){ // For each clause...
+            // Fetch the clause specified at the (class variable) index C, and check if it is satisfied...
+            if((clauses->at(iterator))->is_not_satisfied(var_arr->vars)){ // If it is not satisfied, return a ptr to the Clause instance
+                unsat_clause = clauses->at(iterator);
+                unsat_exists = true;
+                break;
+            }
+            else{ /* Otherwise, calculate the next index C by means of the LCG; note that the LCG has a period of n_clauses
+               * and hence we iterate over each clause exactly once, in a non-linear fashion; this is equivalent to a
+               * pseudo-random shuffling of the clauses vector, and is required for optimal convergence of the Algorithmic
+               * Lovasz Local Lemma method.
+               */
+                iterator = (iterator + P_9223372036854775783) % n_clauses;
+            }
+        }
+
+        if(unsat_exists){
+            // For every variable in the clause (obtained by left shifting by 1 the literal encoding), randomly re-sample
+            for(int i = 0; i < unsat_clause->n_literals; i++){
+                (var_arr->vars)[(unsat_clause->literals)[i] >> 1] = rbg->sample();
+            }
+        }
+        else{
+            solved = true;
+        }
+    }
 }
 
-bool SATInstance::verify_validity(vector<Clause*>* clauses) const{
+void SATInstance::parallel_solve(){
+    vector<RBG<default_random_engine>*> rbg_ensemble;
+    vector<ull> iterators;
+
+    for(int i = 0; i < n_threads; i++){
+        auto engine = new default_random_engine(std::random_device{}()); // Get the system default random generator with a random seed
+        rbg_ensemble.push_back(new RBG<default_random_engine>(*engine)); // Initialise an instance of a random boolean generator...
+        iterators.push_back(P_9223372036854775783 % n_clauses);
+    }
+
+    omp_set_num_threads(n_threads);
+    while(true){
+        auto unsat_clauses = new vector<ClausesArray*>;
+        for(int t = 0; t < n_threads; t++){
+            unsat_clauses->push_back(new ClausesArray);
+        }
+
+        #pragma omp parallel for schedule(dynamic) default(none) shared(unsat_clauses)
+        for(uint32_t c = 0; c < n_clauses; c++){
+            if((clauses->at(c))->is_not_satisfied(var_arr->vars)){
+                (unsat_clauses->at(omp_get_thread_num()))->push_back(clauses->at(c));
+            }
+        }
+
+        auto indep_unsat_clauses = new vector<ClausesArray*>;
+        for(int t = 0; t < n_threads; t++){
+            indep_unsat_clauses->push_back(new ClausesArray);
+        }
+
+        #pragma omp parallel for schedule(static, 1) default(none) shared(unsat_clauses, indep_unsat_clauses, iterators)
+        for(int t = 0; t < n_threads; t++){
+            uint32_t chunk_size = unsat_clauses->at(t)->size();
+            iterators[t] = iterators[t] % chunk_size;
+
+            for(uint32_t i = 0; i < chunk_size; i++){
+                bool independent = true;
+                for(auto c: *(indep_unsat_clauses->at(t))){
+                    if(((unsat_clauses->at(t))->at(iterators[t]))->dependent_clauses(c)){
+                        independent = false;
+                        break;
+                    }
+                }
+
+                if(independent){
+                    (indep_unsat_clauses->at(t))->push_back((unsat_clauses->at(t))->at(iterators[t]));
+                }
+
+                iterators[t] = (iterators[t] + P_9223372036854775783) % chunk_size;
+            }
+
+            delete unsat_clauses->at(t);
+        }
+
+        delete unsat_clauses;
+
+        auto max_indep_unsat_clauses = parallel_k_partite_mis(indep_unsat_clauses);
+        if(max_indep_unsat_clauses->empty()){
+            break;
+        }
+
+        #pragma omp parallel for schedule(dynamic) default(none) shared(max_indep_unsat_clauses, rbg_ensemble)
+        for(uint32_t c = 0; c < max_indep_unsat_clauses->size(); c++){
+            for(int i = 0; i < (max_indep_unsat_clauses->at(c))->n_literals; i++){
+                (var_arr->vars)[((max_indep_unsat_clauses->at(c))->literals)[i] >> 1] = (rbg_ensemble[omp_get_thread_num()])->sample();
+            }
+        }
+    }
+}
+
+bool SATInstance::verify_validity() const{
     for(auto c: *clauses){
         if(c->is_not_satisfied(var_arr->vars)){
             return false;
@@ -141,4 +190,69 @@ bool SATInstance::verify_validity(vector<Clause*>* clauses) const{
     }
 
     return true;
+}
+
+ClausesArray* SATInstance::bipartite_mis(ClausesArray* set1, ClausesArray* set2){
+    auto result = new ClausesArray;
+
+    auto idx1 = set1->begin();
+    while(idx1 != set1->end()){
+        auto idx2 = set2->begin();
+        while(idx2 != set2->end()){
+            if((*idx1)->dependent_clauses(*idx2)){
+                idx2 = set2->erase(idx2);
+            }
+            else{
+                idx2++;
+            }
+        }
+
+        result->push_back(*idx1);
+        idx1 = set1->erase(idx1);
+    }
+
+    for(auto c: *set2){
+        result->push_back(c);
+    }
+
+    return result;
+}
+
+ClausesArray* SATInstance::parallel_k_partite_mis(vector<ClausesArray*>* sets){
+    if(sets->size() == 1){
+        return sets->at(0);
+    }
+    else{
+        auto joined_sets = new vector<ClausesArray*>;
+        int offset = 0;
+
+        if(sets->size() % 2){
+            offset = 1;
+
+            auto max_idx = sets->begin();
+            for(auto idx = sets->begin(); idx != sets->end(); idx++){
+                if((*max_idx)->size() < (*idx)->size()){
+                    max_idx = idx;
+                }
+            }
+
+            joined_sets->push_back(*max_idx);
+            sets->erase(max_idx);
+        }
+
+        auto n_pairs = (int) (sets->size() / 2);
+        for(int t = 0; t < n_pairs; t++){
+            joined_sets->push_back(nullptr);
+        }
+
+        #pragma omp parallel for schedule(static, 1) default(none) shared(n_pairs, offset, sets, joined_sets)
+        for(int t = 0; t < n_pairs; t++){
+            joined_sets->at(offset + t) = bipartite_mis(sets->at(2 * t), sets->at((2 * t) + 1));
+
+            delete sets->at(2*t);
+            delete sets->at((2*t) + 1);
+        }
+
+        return parallel_k_partite_mis(joined_sets);
+    }
 }
