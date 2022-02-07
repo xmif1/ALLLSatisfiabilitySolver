@@ -22,6 +22,10 @@ int main(int argc, char *argv[]){
     }
     else if(argc == 3 && strcmp(argv[1], "-p") == 0){
         cnf_fpath = argv[2];
+        n_threads = omp_get_num_procs();
+        if(n_threads < 2){
+            n_threads = 0; // Do not parallelise
+        }
     }
     else if(argc == 4 && strcmp(argv[1], "-p") == 0){
         cnf_fpath = argv[3];
