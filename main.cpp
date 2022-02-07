@@ -1,16 +1,16 @@
 #include <iostream>
+#include <fstream>
 #include <chrono>
 #include <ctime>
 
-#include "sat_instance/SATInstance.h"
 #include <omp.h>
+
+#include "sat_instance/SATInstance.h"
 
 void output(const string& str, ofstream& out_f);
 
 int main(int argc, char *argv[]){
-    bool parallel = false;
     int n_threads = 0;
-
     string cnf_fpath;
 
     // Option checking...
@@ -22,11 +22,9 @@ int main(int argc, char *argv[]){
     }
     else if(argc == 3 && strcmp(argv[1], "-p") == 0){
         cnf_fpath = argv[2];
-        parallel = true;
     }
     else if(argc == 4 && strcmp(argv[1], "-p") == 0){
         cnf_fpath = argv[3];
-        parallel = true;
         n_threads = stoi(argv[2]);
         if(n_threads > omp_get_num_procs() || n_threads < 2){
             throw std::runtime_error("Invalid number of threads specified...exiting...");
@@ -42,26 +40,50 @@ int main(int argc, char *argv[]){
     string out_fpath = cnf_fpath; out_fpath.replace(out_fpath.size() - 4, 4, ".out");
     ofstream out_f(out_fpath);
 
+    // Reading SAT instance from .cnf file...
+    // Logging...
+    auto timestart = chrono::system_clock::to_time_t(chrono::system_clock::now());
+    auto time_str = string(ctime(&timestart)); time_str.pop_back();
+    string log_start = "Log "; output(log_start.append(time_str) + ": Reading CNF file\n", out_f);
+    auto start = chrono::high_resolution_clock::now();
+
     // Initialise new SATInstance from specified CNF file
     auto satInstance = new SATInstance(cnf_fpath, n_threads);
 
+    auto stop = chrono::high_resolution_clock::now();
+    auto read_duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
+    auto timeend = chrono::system_clock::to_time_t(chrono::system_clock::now());
+    time_str = string(ctime(&timeend)); time_str.pop_back();
+    string log_end = "Log "; output(log_end.append(time_str) + ": Read complete; Duration: " +
+                                    to_string(read_duration.count() / 1000.0) + "s\n\n", out_f);
+
     // Display the meta data for monitoring purposes
-    output("V_NUM = " + to_string(satInstance->n_vars) + "\nC_NUM = " + to_string(satInstance->n_clauses) +
-           "\nL_NUM = " + to_string(satInstance->n_literals) + "\n\n", out_f);
+    output("---------- INFORMATION ----------\n# Variables\t= " + to_string(satInstance->n_vars) +
+    "\n# Clauses\t= " + to_string(satInstance->n_clauses) +
+    "\n# Literals\t= " + to_string(satInstance->n_literals) +
+    "\n---------------------------------\n\n", out_f);
+
+
+    string solve_info = "Starting sequential solve (# Threads = 1)";
+    if(n_threads){
+        solve_info = "Starting parallel solve (# Threads = " + to_string(n_threads) + ")";
+    }
 
     // Solve the SAT instance (using the Algorithmic Lovasz Local Lemma)
     // Logging...
-    auto timestart = chrono::system_clock::to_time_t(chrono::system_clock::now());
-    string log_start = "Log "; output(log_start.append(ctime(&timestart)) + "\tStarting solve...\n", out_f);
-    auto start = chrono::high_resolution_clock::now();
+    timestart = chrono::system_clock::to_time_t(chrono::system_clock::now());
+    time_str = string(ctime(&timestart)); time_str.pop_back();
+    log_start = "Log "; output(log_start.append(time_str) + ": " + solve_info + "\n", out_f);
+    start = chrono::high_resolution_clock::now();
 
     VariablesArray* sat = satInstance->solve();
 
-    auto stop = chrono::high_resolution_clock::now();
-    auto duration = chrono::duration_cast<chrono::microseconds>(stop - start);
-    auto timeend = chrono::system_clock::to_time_t(chrono::system_clock::now());
-    string log_end = "Log "; output(log_end.append(ctime(&timeend)) + "\tCompleted solve...Duration: " +
-                                    to_string(duration.count()) + "\n\n", out_f);
+    stop = chrono::high_resolution_clock::now();
+    auto solve_duration = chrono::duration_cast<chrono::milliseconds>(stop - start);
+    timeend = chrono::system_clock::to_time_t(chrono::system_clock::now());
+    time_str = string(ctime(&timeend)); time_str.pop_back();
+    log_end = "Log "; output(log_end.append(time_str) + ": Completed solve; Duration: " +
+                             to_string(solve_duration.count() / 1000.0) + "s\n\n", out_f);
 
     if(satInstance->verify_validity()){
         // Print the variable assignment for the solution
