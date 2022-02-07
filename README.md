@@ -17,8 +17,9 @@ For installation, ```cmake``` version 3.17+ is required, as well as ```libomp```
 Clone the repository, and ```cd``` into the project directory. Then run:
 
 1. ```mkdir ./build```
-1. ```cmake ..```
-2. ```make```
+2. ```cd ./build```
+3. ```cmake ..```
+4. ```make```
 
 ## Execution Instructions
 
