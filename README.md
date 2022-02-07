@@ -8,10 +8,9 @@ Xandru Mifsud (2021)
 
 ## Requirements
 
-This program is intended to run on Linux platforms, in particular on Debian-based systems such as Ubuntu and
-Lubuntu, on which we have tested the implementation with relative success.
+This program is intended to run on 64-bit Linux and macOS (Intel and Apple Silicon) based systems, on which it has been tested thoroughly.
 
-For installation, ```cmake``` version 3.17+ is required.
+For installation, ```cmake``` version 3.17+ is required, as well as ```libomp```.
 
 ## Installation Instructions
 
