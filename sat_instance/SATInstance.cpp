@@ -61,18 +61,18 @@ SATInstance::SATInstance(const string& cnf_file_name, int n_threads){
 }
 
 // SAT solver based on the Algorithmic Lovasz Local Lemma of Moser and Tardos (2010)
-VariablesArray* SATInstance::solve(){
+Statistics* SATInstance::solve(){
     if(n_threads){
-        parallel_solve();
+        return parallel_solve();
     }
     else{
-        sequential_solve();
+        return sequential_solve();
     }
-
-    return var_arr;
 }
 
-void SATInstance::sequential_solve() const{
+Statistics* SATInstance::sequential_solve() const{
+    auto statistics = new Statistics;
+
     Clause* unsat_clause;
 
     auto engine = new default_random_engine(std::random_device{}()); // Get the system default random generator with a random seed
@@ -84,6 +84,7 @@ void SATInstance::sequential_solve() const{
     bool solved = false;
     while(!solved){ // While there exists a clause c which is not satisfied...
         bool unsat_exists = false;
+        statistics->n_iterations += 1;
 
         for(uint32_t i = 0; i < n_clauses; i++){ // For each clause...
             // Fetch the clause specified at the (class variable) index C, and check if it is satisfied...
@@ -106,14 +107,20 @@ void SATInstance::sequential_solve() const{
             for(int i = 0; i < unsat_clause->n_literals; i++){
                 (var_arr->vars)[(unsat_clause->literals)[i] >> 1] = rbg->sample();
             }
+
+            statistics->n_resamples += unsat_clause->n_literals;
         }
         else{
             solved = true;
         }
     }
+
+    return statistics;
 }
 
-void SATInstance::parallel_solve(){
+Statistics* SATInstance::parallel_solve(){
+    auto statistics = new Statistics;
+
     vector<RBG<default_random_engine>*> rbg_ensemble;
     vector<ull> iterators;
 
@@ -121,6 +128,7 @@ void SATInstance::parallel_solve(){
         auto engine = new default_random_engine(std::random_device{}()); // Get the system default random generator with a random seed
         rbg_ensemble.push_back(new RBG<default_random_engine>(*engine)); // Initialise an instance of a random boolean generator...
         iterators.push_back(P_9223372036854775783 % n_clauses);
+        statistics->n_thread_resamples.push_back(0);
     }
 
     omp_set_num_threads(n_threads);
@@ -129,6 +137,8 @@ void SATInstance::parallel_solve(){
         for(int t = 0; t < n_threads; t++){
             unsat_clauses->push_back(new ClausesArray);
         }
+
+        statistics->n_iterations += 1;
 
         #pragma omp parallel for schedule(dynamic) default(none) shared(unsat_clauses)
         for(uint32_t c = 0; c < n_clauses; c++){
@@ -170,16 +180,32 @@ void SATInstance::parallel_solve(){
 
         auto max_indep_unsat_clauses = parallel_k_partite_mis(indep_unsat_clauses);
         if(max_indep_unsat_clauses->empty()){
+            delete max_indep_unsat_clauses;
             break;
         }
 
-        #pragma omp parallel for schedule(dynamic) default(none) shared(max_indep_unsat_clauses, rbg_ensemble)
+        statistics->avg_mis_size += max_indep_unsat_clauses->size();
+
+        #pragma omp parallel for schedule(dynamic) default(none) shared(max_indep_unsat_clauses, rbg_ensemble, statistics)
         for(uint32_t c = 0; c < max_indep_unsat_clauses->size(); c++){
+            int tid = omp_get_thread_num();
+
             for(int i = 0; i < (max_indep_unsat_clauses->at(c))->n_literals; i++){
-                (var_arr->vars)[((max_indep_unsat_clauses->at(c))->literals)[i] >> 1] = (rbg_ensemble[omp_get_thread_num()])->sample();
+                (var_arr->vars)[((max_indep_unsat_clauses->at(c))->literals)[i] >> 1] = (rbg_ensemble[tid])->sample();
             }
+
+            statistics->n_thread_resamples.at(tid) += (max_indep_unsat_clauses->at(c))->n_literals;
         }
+
+        delete max_indep_unsat_clauses;
     }
+
+    for(int t = 0; t < n_threads; t++){
+        statistics->n_resamples += (statistics->n_thread_resamples).at(t);
+    }
+    statistics->avg_mis_size = (ull) (statistics->avg_mis_size / statistics->n_iterations);
+
+    return statistics;
 }
 
 bool SATInstance::verify_validity() const{
@@ -220,7 +246,10 @@ ClausesArray* SATInstance::bipartite_mis(ClausesArray* set1, ClausesArray* set2)
 
 ClausesArray* SATInstance::parallel_k_partite_mis(vector<ClausesArray*>* sets){
     if(sets->size() == 1){
-        return sets->at(0);
+        auto ret_set = sets->at(0);
+        delete sets;
+
+        return ret_set;
     }
     else{
         auto joined_sets = new vector<ClausesArray*>;
@@ -252,6 +281,8 @@ ClausesArray* SATInstance::parallel_k_partite_mis(vector<ClausesArray*>* sets){
             delete sets->at(2*t);
             delete sets->at((2*t) + 1);
         }
+
+        delete sets;
 
         return parallel_k_partite_mis(joined_sets);
     }

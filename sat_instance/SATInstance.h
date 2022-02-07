@@ -24,6 +24,13 @@ using namespace std;
 
 typedef vector<Clause*> ClausesArray;
 
+typedef struct Statistics{
+    ull n_iterations = 0;
+    ull n_resamples = 0;
+    ull avg_mis_size = 0;
+    vector<ull> n_thread_resamples;
+} Statistics;
+
 /* Represents a CNF SAT instance loaded from a DIMACS-formatted file, providing a number of functions to:
  *   i. Generate the Laplacian of the (full) dependency graph between the clauses of the instance.
  *  ii. Solve, by means of the Algorithmic Lovasz Local Lemma (Moser & Tardos, 2010), the SAT instance.
@@ -40,7 +47,7 @@ class SATInstance{
 
         explicit SATInstance(const string& cnf_file_name, int n_threads = 0);
 
-        VariablesArray* solve();
+        Statistics* solve();
         bool verify_validity() const;
 
     private:
@@ -48,8 +55,8 @@ class SATInstance{
         const ull P_9223372036854775783 = 9223372036854775783;
         int n_threads;
 
-        void parallel_solve();
-        void sequential_solve() const;
+        Statistics* parallel_solve();
+        Statistics* sequential_solve() const;
         ClausesArray* parallel_k_partite_mis(vector<ClausesArray*>* sets);
         static ClausesArray* bipartite_mis(ClausesArray* set1, ClausesArray* set2);
 };
