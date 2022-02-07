@@ -2,7 +2,10 @@
 
 ---
 
-Xandru Mifsud (2021)
+Xandru Mifsud (2022)
+
+Undergraduate CS APT 'Random Boolean Satisfiability' (University of Malta)
+Supervisor: Dr. Sandro Spina
 
 ---
 
