@@ -5,8 +5,8 @@
 #include "Clause.h"
 
 /* Constructor for a clause instance, setting the internal state using the passed parameters:
- *  i. ull n_literals is the number of literals in the clause
- * ii. ull* literals is an array of size n_literals where each element corresponds to a literal in the clause
+ *  i. int n_literals is the number of literals in the clause
+ * ii. uint32_t* literals is an array of size n_literals where each element corresponds to a literal in the clause
  */
 Clause::Clause(uint32_t* literals, int n_literals){
     this->literals = literals;
