@@ -4,9 +4,13 @@
 
 #include "SATInstance.h"
 
+// =====================================================================================================================
+// --------------------------------------------------- INITIALISATION --------------------------------------------------
+// =====================================================================================================================
+
 /* Constructor for a SATInstance object, with the file path to a DIMACS formatted .cnf file accepted as input.
  * This constructor is responsible for:
- *  i. Loading meta data (number of variables, clauses etc) as well as reading the clauses from the specified .cnf file,
+ *  i. Loading meta-data (number of variables, clauses etc) as well as reading the clauses from the specified .cnf file,
  *     using the CNF_IO package (available at https://people.sc.fsu.edu/~jburkardt/cpp_src/cnf_io/cnf_io.html)
  * ii. Encoding literals such that a variable x, where x is a non-negative integer, is mapped to 2x while its negation
  *     is mapped to 2x + 1. For this encoding, we can obtain the variable associated with a literal by a single left
@@ -17,7 +21,7 @@ SATInstance::SATInstance(const string& cnf_file_name, int n_threads){
     int* l_c_num;
     int* l_val;
 
-    // Read the meta data from the .cnf file
+    // Read the meta-data from the .cnf file
     if(cnf_header_read(cnf_file_name, &v_num, &c_num, &l_num)){
         cout << "The header information could not be read. Exiting..." << endl;
         exit(1);
@@ -26,7 +30,7 @@ SATInstance::SATInstance(const string& cnf_file_name, int n_threads){
     l_c_num = new int[c_num];
     l_val = new int[l_num];
 
-    // Read the clauses data from the .cnf file
+    // Read the clause data from the .cnf file
     cnf_data_read(cnf_file_name, v_num, c_num, l_num, l_c_num, l_val);
 
     int c, l, l_c;
@@ -49,18 +53,23 @@ SATInstance::SATInstance(const string& cnf_file_name, int n_threads){
             l += 1;
         }
 
-        clauses->push_back(new Clause(literals, l_c_num[c]));
+        clauses->push_back(new Clause(literals, l_c_num[c])); // Populate clauses array
     }
 
     // Initialise internal state variables...
-    n_vars = v_num; // Number of variables in SAT instance
-    n_clauses = c_num; // Number of clauses in SAT instance
-    n_literals = l_num; // Number of literals in SAT instance
-    this->n_threads = n_threads; // Number of threads for solving (if using parallel solver)
-    var_arr = new VariablesArray(n_vars); // Encoded variables array
+    n_vars = v_num;                                         // Number of variables in SAT instance
+    n_clauses = c_num;                                      // Number of clauses in SAT instance
+    n_literals = l_num;                                     // Number of literals in SAT instance
+    this->n_threads = n_threads;                            // Number of threads for solving (if using parallel solver)
+    var_arr = new VariablesArray(n_vars);                   // Encoded variables array
 }
 
-// SAT solver based on the Algorithmic Lovasz Local Lemma of Moser and Tardos (2010)
+// =====================================================================================================================
+// --------------------------------------------------- ALLL SOLVERS ----------------------------------------------------
+// =====================================================================================================================
+
+// SAT solver based on the Algorithmic Lovasz Local Lemma of Moser and Tardos (2010); wrapper to either sequential or
+// parallel solver depending on whether 1 or more threads specified during instantiation.
 Statistics* SATInstance::solve(){
     if(n_threads){
         return parallel_solve();
@@ -208,6 +217,11 @@ Statistics* SATInstance::parallel_solve(){
     return statistics;
 }
 
+// =====================================================================================================================
+// ----------------------------------------------------- UTILITIES -----------------------------------------------------
+// =====================================================================================================================
+
+// Convenience function for checking whether the assignments in var_arr represent a valid solution or not.
 bool SATInstance::verify_validity() const{
     for(auto c: *clauses){
         if(c->is_not_satisfied(var_arr->vars)){
@@ -218,26 +232,35 @@ bool SATInstance::verify_validity() const{
     return true;
 }
 
+// Utility function for constructing a maximally independent set (MIS) from two other such sets
 ClausesArray* SATInstance::bipartite_mis(ClausesArray* set1, ClausesArray* set2){
-    auto result = new ClausesArray;
+    auto result = new ClausesArray; // The resulting MIS from joining set1 and set2
 
+    /* We begin by iterating across all the elements in set1 and checking it against every element in set2. If for some
+     * element x in set1 there is an element y in set2 such that x and y are independent, then we delete y from set2 (on
+     * the fly). Hence, the resulting MIS will always contain set1 as a subset (where set1 is assumed to be a MIS).
+     */
     auto idx1 = set1->begin();
-    while(idx1 != set1->end()){
+    while(idx1 != set1->end()){ // Consider an element x in set1...
         auto idx2 = set2->begin();
-        while(idx2 != set2->end()){
-            if((*idx1)->dependent_clauses(*idx2)){
+        while(idx2 != set2->end()){ // for every element y in set2
+            if((*idx1)->dependent_clauses(*idx2)){ // if y and x are dependent, remove y from set2
                 idx2 = set2->erase(idx2);
             }
-            else{
+            else{ // else maintain y in set2 and check the next element y' (if any) in set2
                 idx2++;
             }
         }
 
-        result->push_back(*idx1);
-        idx1 = set1->erase(idx1);
+        result->push_back(*idx1); // In any case, add x from set1 to the resulting MIS
+        idx1 = set1->erase(idx1); // Erase x from set1 (simply for memory management)
     }
 
-    for(auto c: *set2){
+    /* As a result, all the remaining elements in set2 are independent from all the elements in set1, i.e. from all the
+     * elements in the resulting MIS thus far. Hence we simply take the union of the two sets (the current resulting set
+     * and the augmented set2).
+     */
+    for(auto c: *set2){ // Added every element in the augmented set2 to the resulting MIS
         result->push_back(c);
     }
 

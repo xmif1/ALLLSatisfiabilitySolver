@@ -24,7 +24,9 @@ using namespace std;
 
 typedef vector<Clause*> ClausesArray;
 
-typedef struct Statistics{
+typedef struct Statistics{ // Structure for maintaining some simple statistics on the instance solve, such as the number
+                           // of iterations, variable resamples (on a per-thread basis) and the average maximal indep.
+                           // set size (per-thread, in the parallel ALLL algorithm case)
     ull n_iterations = 0;
     ull n_resamples = 0;
     ull avg_mis_size = 0;
@@ -32,9 +34,9 @@ typedef struct Statistics{
 } Statistics;
 
 /* Represents a CNF SAT instance loaded from a DIMACS-formatted file, providing a number of functions to:
- *   i. Generate the Laplacian of the (full) dependency graph between the clauses of the instance.
- *  ii. Solve, by means of the Algorithmic Lovasz Local Lemma (Moser & Tardos, 2010), the SAT instance.
- * iii. Check whether a variable assignment satisfies the SAT instance.
+ *  i. Solve, by means of the Algorithmic Lovasz Local Lemma (Moser & Tardos, 2010), the SAT instance, in either a
+ *     sequential or parallel manner.
+ * ii. Check whether a variable assignment satisfies the SAT instance.
  */
 class SATInstance{
     public:
