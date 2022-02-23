@@ -76,13 +76,18 @@ int main(int argc, char *argv[]){
     }
 
     ofstream* out_f;
+    ofstream* stat_f;
 
     if(dump){
         string out_fpath = cnf_fpath; out_fpath.replace(out_fpath.size() - 4, 4, ".out");
         out_f = new ofstream(out_fpath);
+
+        string stat_fpath = cnf_fpath; stat_fpath.replace(stat_fpath.size() - 4, 4, ".csv");
+        stat_f = new ofstream(stat_fpath);
     }
     else{
         out_f = nullptr;
+        stat_f = nullptr;
     }
 
     // Reading SAT instance from .cnf file...
@@ -108,6 +113,13 @@ int main(int argc, char *argv[]){
     "\n# Literals\t= " + to_string(satInstance->n_literals) +
     "\n-------------------------------------\n\n", out_f, dump);
 
+    if(dump){
+        *stat_f << to_string(read_duration.count() / 1000.0) + ",";
+        *stat_f << to_string(satInstance->n_vars) + ",";
+        *stat_f << to_string(satInstance->n_clauses) + ",";
+        *stat_f << to_string(satInstance->n_literals) + ",";
+    }
+
 
     string solve_info = "Starting sequential solve (# Threads = 1)";
     if(n_threads){
@@ -130,6 +142,10 @@ int main(int argc, char *argv[]){
     log_end = "Log "; output(log_end.append(time_str) + ": Completed solve; Duration: " +
                              to_string(solve_duration.count() / 1000.0) + "s\n\n", out_f, dump);
 
+    if(dump){
+        *stat_f << to_string(solve_duration.count() / 1000.0) + ",";
+    }
+
     if(n_threads){
         output("------------ STATISTICS -------------\n# Iterations\t= " + to_string(statistics->n_iterations) +
         "\n# Resamples\t= " + to_string(statistics->n_resamples), out_f, dump);
@@ -141,25 +157,45 @@ int main(int argc, char *argv[]){
 
         output("\n\nAvg. UNSAT MIS Size = " + to_string(statistics->avg_mis_size) +
         "\n-------------------------------------\n\n", out_f, dump);
+
+        if(dump){
+            *stat_f << to_string(n_threads) + ",";
+            *stat_f << to_string(statistics->n_iterations) + "\n";
+        }
     }
     else{
         output("------------ STATISTICS -------------\n# Iterations\t= " + to_string(statistics->n_iterations) +
                "\n# Resamples\t= " + to_string(statistics->n_resamples) +
                "\n-------------------------------------\n\n", out_f, dump);
+
+        if(dump){
+            *stat_f << "1,";
+            *stat_f << to_string(statistics->n_iterations) + "\n";
+        }
     }
 
     if(satInstance->verify_validity()){
         // Print the variable assignment for the solution
         output("SATISFIABLE\n", out_f, dump);
 
-        if(dump){ out_f->close();}
+        if(dump){
+            for(ull i = 0; i < satInstance->n_vars; i++){
+                *out_f << "\nVariable " + to_string(i + 1) + " = " + to_string((satInstance->var_arr->vars)[i]);
+            }
+
+            stat_f->close();
+            out_f->close();
+        }
 
         return 0;
     }
     else{
         output("ERROR: Solver converged to an invalid solution!\n", out_f, dump);
 
-        if(dump){ out_f->close();}
+        if(dump){
+            stat_f->close();
+            out_f->close();
+        }
 
         return 1;
     }
