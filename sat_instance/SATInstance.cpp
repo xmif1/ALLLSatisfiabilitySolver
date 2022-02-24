@@ -79,34 +79,50 @@ Statistics* SATInstance::solve(){
     }
 }
 
+/* Serial Algorithmic Lovasz Local Lemma of Moser and Tardos (2010), with 'shuffling' of the clauses vector to satisfy
+ * the 'there exists an unsatisfied clause' condition stochasticallly.
+ */
 Statistics* SATInstance::sequential_solve() const{
     auto statistics = new Statistics;
 
     Clause* unsat_clause;
 
-    auto engine = new default_random_engine(std::random_device{}()); // Get the system default random generator with a random seed
-    auto rbg = new RBG<default_random_engine>(*engine); // Initialise an instance of a random boolean generator...
+    // Get the system default random generator with a random seed
+    auto engine = new default_random_engine(std::random_device{}());
+
+    // Initialise an instance of a random boolean generator...
+    auto rbg = new RBG<default_random_engine>(*engine);
+
     ull iterator = P_9223372036854775783 % n_clauses; // Starting seed for an LCG based index to the this.clauses vector,
                                                       // which pseudo-randomly visits all the clauses exactly once with
                                                       // a period of n_clauses, allowing for efficient 'shuffling' of the
                                                       // clauses vector;
+
+    /* Note that by shuffling through the clauses array, we are effectively breaking any 'local minima' in the search
+     * space; in between iterations, we do not get stuck successively in the same clause until it becomes satisfied, but
+     * rather we visit other unsatisfied clauses and satisfy those (which in turn may influence out original unsatisfied
+     * clause).
+     */
+
     bool solved = false;
     while(!solved){ // While there exists a clause c which is not satisfied...
         bool unsat_exists = false;
-        statistics->n_iterations += 1;
+        statistics->n_iterations += 1; // Update statistics
 
         for(uint32_t i = 0; i < n_clauses; i++){ // For each clause...
             // Fetch the clause specified at the (class variable) index C, and check if it is satisfied...
-            if((clauses->at(iterator))->is_not_satisfied(var_arr->vars)){ // If it is not satisfied, return a ptr to the Clause instance
+
+            // If it is not satisfied, return a ptr to the Clause instance
+            if((clauses->at(iterator))->is_not_satisfied(var_arr->vars)){
                 unsat_clause = clauses->at(iterator);
                 unsat_exists = true;
                 break;
             }
-            else{ /* Otherwise, calculate the next index C by means of the LCG; note that the LCG has a period of n_clauses
-               * and hence we iterate over each clause exactly once, in a non-linear fashion; this is equivalent to a
-               * pseudo-random shuffling of the clauses vector, and is required for optimal convergence of the Algorithmic
-               * Lovasz Local Lemma method.
-               */
+            else{ /* Otherwise, calculate the next index C by means of the LCG; note that the LCG has a period of
+                   * n_clauses and hence we iterate over each clause exactly once, in a non-linear fashion; this is
+                   * equivalent to a pseudo-random shuffling of the clauses vector, and is required for optimal
+                   * convergence of the Algorithmic Lovasz Local Lemma method.
+                   */
                 iterator = (iterator + P_9223372036854775783) % n_clauses;
             }
         }
@@ -117,7 +133,7 @@ Statistics* SATInstance::sequential_solve() const{
                 (var_arr->vars)[(unsat_clause->literals)[i] >> 1] = rbg->sample();
             }
 
-            statistics->n_resamples += unsat_clause->n_literals;
+            statistics->n_resamples += unsat_clause->n_literals; // Update statistics
         }
         else{
             solved = true;
@@ -127,28 +143,71 @@ Statistics* SATInstance::sequential_solve() const{
     return statistics;
 }
 
+/* Parallel Algorithmic Lovasz Local Lemma of Moser and Tardos (2010), with parallel unsatisfied clause checking and
+ * parallel divide-and-conquer generation of maximal independent sets of unsatisfied clauses; the sets of independent
+ * unsatisfied clauses chosen by each thread is done in a pseudo-random manner.
+ */
 Statistics* SATInstance::parallel_solve(){
     auto statistics = new Statistics;
+
+    /* Each thread will be allocated a batch of clauses, divided dynamically amongst the threads. For each of these
+     * batches, we check which clauses are unsatisfied and only maintain those. Hence each thread t will have a set U_t
+     * of unsatisfied clauses associated with it, where for i != j then U_i and U_j are disjoint.
+     *
+     * For each set U_t, we must greedily choose a subset which is maximally independent I_t (ideally of largest size -
+     * however this is not guaranteed and is indeed another problem in NP). To do so, we 'shuffle' U_t such that, if in
+     * between iterations U_t is generated twice, the resulting independent set I_t is (probably) not. Note that by
+     * shuffling through the clauses array, we are effectively breaking any 'local minima' in the search space.
+     *
+     * Now, to shuffle the unsatisfied clauses in U_t, we require an LCG. In particular, since our LCG depends on the
+     * size of U_t and the current clause processed by a thread, we require an LCG for each thread ie. we require an
+     * ensemble of LCG--based iterators, one for each thread.
+     *
+     * Lastly, all the maximally independent sets (MIS) I_t will be joined (through a parallel and divide-and-conquer
+     * based join algorithm) into a single MIS S. The clauses in S are all independent and hence can have all their
+     * variables re-sampled. For maximum utilisation, variable resampling is carried out in parallel as well, by dynamic
+     * allocation of clauses in S to all the available threads.
+     *
+     * Since re-sampling is stochastically carried out using our random boolean generator (RBG) implementation, and an
+     * RBG instance maintains state, we require an RBG for each thread - hence we must also initialise one for each.
+     *
+     * SUMMARY: 1. Split clauses in n_threads batches {C_j}.
+     *          2. For each C_j, in parallel find the subset U_j of C_j where U_j is all the unsatisfied clauses.
+     *          3. For each U_j, in parallel greedily find a MIS I_j in U_j, using shuffling to break any local minima.
+     *          4. Join the family of MISs {I_j} into a single MIS S (in parallel using divide-and-conquer).
+     *          5. For each clause C in S, in parallel resample the variables in C using an RBG.
+     */
 
     vector<RBG<default_random_engine>*> rbg_ensemble;
     vector<ull> iterators;
 
+    // Initialise ensembles of RBGs and iterators...
     for(int i = 0; i < n_threads; i++){
-        auto engine = new default_random_engine(std::random_device{}()); // Get the system default random generator with a random seed
-        rbg_ensemble.push_back(new RBG<default_random_engine>(*engine)); // Initialise an instance of a random boolean generator...
+        // Get the system default random generator with a random seed
+        auto engine = new default_random_engine(std::random_device{}());
+
+        // Initialise an instance of a random boolean generator
+        rbg_ensemble.push_back(new RBG<default_random_engine>(*engine));
+
+        // Initialise LCG-based iterators
         iterators.push_back(P_9223372036854775783 % n_clauses);
+
+        // Initialise statistics
         statistics->n_thread_resamples.push_back(0);
     }
 
     omp_set_num_threads(n_threads);
-    while(true){
+    while(true){ // While there exists a clause c which is not satisfied...
+
+        // Initialise an empty vector U_t for the unsatisfied clauses found by each thread
         auto unsat_clauses = new vector<ClausesArray*>;
         for(int t = 0; t < n_threads; t++){
             unsat_clauses->push_back(new ClausesArray);
         }
 
-        statistics->n_iterations += 1;
+        statistics->n_iterations += 1; // Update statistics
 
+        // Split clauses in n_threads batches {C_j}, in parallel through dynamic allocation for maximum utilisation
         #pragma omp parallel for schedule(dynamic) default(none) shared(unsat_clauses)
         for(uint32_t c = 0; c < n_clauses; c++){
             if((clauses->at(c))->is_not_satisfied(var_arr->vars)){
@@ -156,6 +215,7 @@ Statistics* SATInstance::parallel_solve(){
             }
         }
 
+        // Initialise an empty vector I_t for the MIS of unsatisfied clauses associated with U_t of each thread
         auto indep_unsat_clauses = new vector<ClausesArray*>;
         for(int t = 0; t < n_threads; t++){
             indep_unsat_clauses->push_back(new ClausesArray);
@@ -193,7 +253,7 @@ Statistics* SATInstance::parallel_solve(){
             break;
         }
 
-        statistics->avg_mis_size += max_indep_unsat_clauses->size();
+        statistics->avg_mis_size += max_indep_unsat_clauses->size(); // Update statistics
 
         #pragma omp parallel for schedule(dynamic) default(none) shared(max_indep_unsat_clauses, rbg_ensemble, statistics)
         for(uint32_t c = 0; c < max_indep_unsat_clauses->size(); c++){
@@ -203,6 +263,7 @@ Statistics* SATInstance::parallel_solve(){
                 (var_arr->vars)[((max_indep_unsat_clauses->at(c))->literals)[i] >> 1] = (rbg_ensemble[tid])->sample();
             }
 
+            // Update statistics
             statistics->n_thread_resamples.at(tid) += (max_indep_unsat_clauses->at(c))->n_literals;
         }
 
@@ -210,9 +271,9 @@ Statistics* SATInstance::parallel_solve(){
     }
 
     for(int t = 0; t < n_threads; t++){
-        statistics->n_resamples += (statistics->n_thread_resamples).at(t);
+        statistics->n_resamples += (statistics->n_thread_resamples).at(t); // Update statistics
     }
-    statistics->avg_mis_size = (ull) (statistics->avg_mis_size / statistics->n_iterations);
+    statistics->avg_mis_size = (ull) (statistics->avg_mis_size / statistics->n_iterations); // Update statistics
 
     return statistics;
 }
