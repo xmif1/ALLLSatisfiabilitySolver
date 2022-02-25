@@ -221,44 +221,59 @@ Statistics* SATInstance::parallel_solve(){
             indep_unsat_clauses->push_back(new ClausesArray);
         }
 
+        // Find a subset MIS I_t in each set of unsatisfied clauses U_t, in parallel (statically, one for each thread);
+        // As described earlier, we visit the clauses in each U_t in a pseudo-random order (effectively shuffling)
         #pragma omp parallel for schedule(static, 1) default(none) shared(unsat_clauses, indep_unsat_clauses, iterators)
         for(int t = 0; t < n_threads; t++){
+            // Initialise iterator LCG such that it does not exceed chunk_size (ie number of clauses in U_t)
             uint32_t chunk_size = unsat_clauses->at(t)->size();
             iterators[t] = iterators[t] % chunk_size;
 
-            for(uint32_t i = 0; i < chunk_size; i++){
-                bool independent = true;
-                for(auto c: *(indep_unsat_clauses->at(t))){
+            for(uint32_t i = 0; i < chunk_size; i++){ // Visit each clause in U_t; note that the iterator i is not used
+                // as an index; rather the LCG corresponding to the thread is. Since the LCG has period chunk_size, each
+                // time we update it with every iteration i, we ensure that no clause is visited twice. Hence since i
+                // has a range from 0 to chunk_size - 1, we visit all the clauses in U_t in a non-linear fashion.
+
+                bool independent = true; // If current clause in U_t is dependent on some clause in the current state of
+                                         // the independent set I_t, then change flag to false.
+                for(auto c: *(indep_unsat_clauses->at(t))){ // Check if dependent on any clause in I_t...
                     if(((unsat_clauses->at(t))->at(iterators[t]))->dependent_clauses(c)){
+                        // If dependent, update independent flag to false and break (no need to continue checking -
+                        // the current clause in U_t will not be added to the independent set)
                         independent = false;
                         break;
                     }
                 }
 
-                if(independent){
+                if(independent){ // If independent, then add to independent set I_t
                     (indep_unsat_clauses->at(t))->push_back((unsat_clauses->at(t))->at(iterators[t]));
                 }
 
-                iterators[t] = (iterators[t] + P_9223372036854775783) % chunk_size;
-            }
+                iterators[t] = (iterators[t] + P_9223372036854775783) % chunk_size; // Update LCG
+            } // At the end, I_t will be a MIS since all clauses in U_t have been exhausted
 
-            delete unsat_clauses->at(t);
+            delete unsat_clauses->at(t); // Memory management; we no longer require U_t, only I_t
         }
 
-        delete unsat_clauses;
+        delete unsat_clauses; // Memory management
 
+        // Join the n_thread MISs {I_t} into a single MIS (through the parallel_k_partite_mis() function)
         auto max_indep_unsat_clauses = parallel_k_partite_mis(indep_unsat_clauses);
+
+        // If max_indep_unsat_clauses is empty, then no unsat clauses have been found across all threads - SATISFIED
         if(max_indep_unsat_clauses->empty()){
-            delete max_indep_unsat_clauses;
+            delete max_indep_unsat_clauses; // Memory management
             break;
         }
 
         statistics->avg_mis_size += max_indep_unsat_clauses->size(); // Update statistics
 
+        // In parallel and dynamically, re-sample the variables appearing in the clauses of the MIS constructed
         #pragma omp parallel for schedule(dynamic) default(none) shared(max_indep_unsat_clauses, rbg_ensemble, statistics)
         for(uint32_t c = 0; c < max_indep_unsat_clauses->size(); c++){
-            int tid = omp_get_thread_num();
+            int tid = omp_get_thread_num(); // Get thread identifier
 
+            // Re--sample every variable in the clause using the RBG associated with the thread tid
             for(int i = 0; i < (max_indep_unsat_clauses->at(c))->n_literals; i++){
                 (var_arr->vars)[((max_indep_unsat_clauses->at(c))->literals)[i] >> 1] = (rbg_ensemble[tid])->sample();
             }
@@ -267,7 +282,7 @@ Statistics* SATInstance::parallel_solve(){
             statistics->n_thread_resamples.at(tid) += (max_indep_unsat_clauses->at(c))->n_literals;
         }
 
-        delete max_indep_unsat_clauses;
+        delete max_indep_unsat_clauses; // Memory management
     }
 
     for(int t = 0; t < n_threads; t++){
@@ -328,20 +343,32 @@ ClausesArray* SATInstance::bipartite_mis(ClausesArray* set1, ClausesArray* set2)
     return result;
 }
 
+// Utility function for recursively and in parallel joining k disjoint maximally independent sets into a single one
 ClausesArray* SATInstance::parallel_k_partite_mis(vector<ClausesArray*>* sets){
-    if(sets->size() == 1){
+    // BASE CASE
+    if(sets->size() == 1){ // If only a single MIS is passed as input, then simply return it
         auto ret_set = sets->at(0);
         delete sets;
 
         return ret_set;
     }
-    else{
-        auto joined_sets = new vector<ClausesArray*>;
-        int offset = 0;
+    else{ // RECURSIVE CASE
+        /* The join works by pairing the independent sets passed as input, and (in parallel) each pair is joined into a
+         * single MIS using the bipartite_mis() algorithm. Note that in the case of an odd number of sets, one is not
+         * paired.
+         *
+         * The parallel_k_partite_mis is then called once again on the resulting sets, until the base case is satisfied.
+         */
 
-        if(sets->size() % 2){
-            offset = 1;
+        auto joined_sets = new vector<ClausesArray*>; // Resulting MIS from pair--wise joins
+        int offset = 0; // Index offset from which to start populating joined_sets (if odd then index 0 is populated
+        // with the largest input MIS, and the remaining are paired off and joined_sets is populated with the joined
+        // sets from index 1 onwards ie. offset is set to 1.
 
+        if(sets->size() % 2){ // If odd number of initial sets...
+            offset = 1; // Set offset to 1
+
+            // Find the input MIS with the largest size
             auto max_idx = sets->begin();
             for(auto idx = sets->begin(); idx != sets->end(); idx++){
                 if((*max_idx)->size() < (*idx)->size()){
@@ -349,25 +376,29 @@ ClausesArray* SATInstance::parallel_k_partite_mis(vector<ClausesArray*>* sets){
                 }
             }
 
-            joined_sets->push_back(*max_idx);
-            sets->erase(max_idx);
-        }
+            joined_sets->push_back(*max_idx); // Append largest MIS to joined_sets
+            sets->erase(max_idx); // Memory management
+        } // The remaining input MISs are paired off and joined into a single MIS
 
-        auto n_pairs = (int) (sets->size() / 2);
-        for(int t = 0; t < n_pairs; t++){
+        auto n_pairs = (int) (sets->size() / 2); // Number of sets resulting from pairing
+        for(int t = 0; t < n_pairs; t++){ // Initialisation
             joined_sets->push_back(nullptr);
         }
 
+        // In parallel join each pair of input MISs using the bipartite_mis() algorithm (one for each thread; number of
+        // pairs does not exceed n_threads)
         #pragma omp parallel for schedule(static, 1) default(none) shared(n_pairs, offset, sets, joined_sets)
         for(int t = 0; t < n_pairs; t++){
+            // Join pairs greedily into a single independent set...
             joined_sets->at(offset + t) = bipartite_mis(sets->at(2 * t), sets->at((2 * t) + 1));
 
+            // Memory management (we only require the resulting joined set from two initial sets)
             delete sets->at(2*t);
             delete sets->at((2*t) + 1);
         }
 
-        delete sets;
+        delete sets; // Memory management
 
-        return parallel_k_partite_mis(joined_sets);
+        return parallel_k_partite_mis(joined_sets); // Recursive join of the resulting MISs
     }
 }
