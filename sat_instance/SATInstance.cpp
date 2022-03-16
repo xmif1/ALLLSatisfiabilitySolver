@@ -46,7 +46,7 @@ SATInstance::SATInstance(const string& cnf_file_name, int n_threads){
              * (and hence non-zero) integers; Since we wish to use the variable x as an index to an array (where array
              * index starts from zero), we wish to shift the DIMACS variable label x to x - 1. Hence the DIMACS variable
              * x is encoded as 2x - 2. The negation of a variable x in DIMACS is the negative integer -x, hence applying
-             * the shift and encoding, it is mapped to -2x - 1.
+             * the shift and encoding, it is mapped to 2x - 1.
              */
             literals[l_c] = (0 < l_val[l]) ? (2 * l_val[l]) - 2 : ((-2) * l_val[l]) - 1;
 
@@ -144,7 +144,7 @@ Statistics* SATInstance::sequential_solve() const{
 }
 
 /* Parallel Algorithmic Lovasz Local Lemma of Moser and Tardos (2010), with parallel unsatisfied clause checking and
- * parallel divide-and-conquer generation of maximal independent sets of unsatisfied clauses; the sets of independent
+ * parallel divide-and-conquer generation of non-trivial independent sets of unsatisfied clauses; the sets of independent
  * unsatisfied clauses chosen by each thread is done in a pseudo-random manner.
  */
 Statistics* SATInstance::parallel_solve(){
@@ -167,6 +167,10 @@ Statistics* SATInstance::parallel_solve(){
      * based join algorithm) into a single MIS S. The clauses in S are all independent and hence can have all their
      * variables re-sampled. For maximum utilisation, variable resampling is carried out in parallel as well, by dynamic
      * allocation of clauses in S to all the available threads.
+     *
+     * Note that the conditions on S we consider are more relaxed than those required by Moser and Tardos (2010); namely
+     * S is an independent set in the set of unsatisfied clauses but not a MIS, however S must be a MIS in the union of
+     * all the I_ts.
      *
      * Since re-sampling is stochastically carried out using our random boolean generator (RBG) implementation, and an
      * RBG instance maintains state, we require an RBG for each thread - hence we must also initialise one for each.
@@ -257,8 +261,8 @@ Statistics* SATInstance::parallel_solve(){
 
         delete unsat_clauses; // Memory management
 
-        // Join the n_thread MISs {I_t} into a single MIS (through the parallel_k_partite_mis() function)
-        auto max_indep_unsat_clauses = parallel_k_partite_mis(indep_unsat_clauses);
+        // Join the n_thread MISs {I_t} into a single MIS (through the parallel_greedy_mis_join() function)
+        auto max_indep_unsat_clauses = parallel_greedy_mis_join(indep_unsat_clauses);
 
         // If max_indep_unsat_clauses is empty, then no unsat clauses have been found across all threads - SATISFIED
         if(max_indep_unsat_clauses->empty()){
@@ -309,7 +313,7 @@ bool SATInstance::verify_validity() const{
 }
 
 // Utility function for constructing a maximally independent set (MIS) from two other such sets
-ClausesArray* SATInstance::bipartite_mis(ClausesArray* set1, ClausesArray* set2){
+ClausesArray* SATInstance::greedy_mis_join(ClausesArray* set1, ClausesArray* set2){
     auto result = new ClausesArray; // The resulting MIS from joining set1 and set2
 
     /* We begin by iterating across all the elements in set1 and checking it against every element in set2. If for some
@@ -344,7 +348,7 @@ ClausesArray* SATInstance::bipartite_mis(ClausesArray* set1, ClausesArray* set2)
 }
 
 // Utility function for recursively and in parallel joining k disjoint maximally independent sets into a single one
-ClausesArray* SATInstance::parallel_k_partite_mis(vector<ClausesArray*>* sets){
+ClausesArray* SATInstance::parallel_greedy_mis_join(vector<ClausesArray*>* sets){
     // BASE CASE
     if(sets->size() == 1){ // If only a single MIS is passed as input, then simply return it
         auto ret_set = sets->at(0);
@@ -354,10 +358,10 @@ ClausesArray* SATInstance::parallel_k_partite_mis(vector<ClausesArray*>* sets){
     }
     else{ // RECURSIVE CASE
         /* The join works by pairing the independent sets passed as input, and (in parallel) each pair is joined into a
-         * single MIS using the bipartite_mis() algorithm. Note that in the case of an odd number of sets, one is not
+         * single MIS using the greedy_mis_join() algorithm. Note that in the case of an odd number of sets, one is not
          * paired.
          *
-         * The parallel_k_partite_mis is then called once again on the resulting sets, until the base case is satisfied.
+         * The parallel_greedy_mis_join is then called once again on the resulting sets, until the base case is satisfied.
          */
 
         auto joined_sets = new vector<ClausesArray*>; // Resulting MIS from pair--wise joins
@@ -385,12 +389,17 @@ ClausesArray* SATInstance::parallel_k_partite_mis(vector<ClausesArray*>* sets){
             joined_sets->push_back(nullptr);
         }
 
-        // In parallel join each pair of input MISs using the bipartite_mis() algorithm (one for each thread; number of
+        // In parallel join each pair of input MISs using the greedy_mis_join() algorithm (one for each thread; number of
         // pairs does not exceed n_threads)
         #pragma omp parallel for schedule(static, 1) default(none) shared(n_pairs, offset, sets, joined_sets)
         for(int t = 0; t < n_pairs; t++){
             // Join pairs greedily into a single independent set...
-            joined_sets->at(offset + t) = bipartite_mis(sets->at(2 * t), sets->at((2 * t) + 1));
+            if(sets->at((2 * t) + 1)->size() <= sets->at(2 * t)->size()) {
+                joined_sets->at(offset + t) = greedy_mis_join(sets->at(2 * t), sets->at((2 * t) + 1));
+            }
+            else{
+                joined_sets->at(offset + t) = greedy_mis_join(sets->at((2 * t) + 1), sets->at(2 * t));
+            }
 
             // Memory management (we only require the resulting joined set from two initial sets)
             delete sets->at(2*t);
@@ -399,6 +408,6 @@ ClausesArray* SATInstance::parallel_k_partite_mis(vector<ClausesArray*>* sets){
 
         delete sets; // Memory management
 
-        return parallel_k_partite_mis(joined_sets); // Recursive join of the resulting MISs
+        return parallel_greedy_mis_join(joined_sets); // Recursive join of the resulting MISs
     }
 }

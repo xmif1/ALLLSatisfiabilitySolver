@@ -19,7 +19,7 @@ typedef unsigned long long ull;
  *
  * While the <random> header provides a number of random integer generators from which we can stochastically generate 0
  * or 1, these are largely inefficient since they are designed to cater for more general scenarios. Hence the need for
- * a random boolean generator specifically optimised for this scenario. This is especially important since in the worst
+ * k This is especially important since in the worst
  * case of the Algorithmic Lovasz Local Lemma, the number of random boolean re-samples is exponential in the number of
  * variables - hence we require every performance boost possible.
  */
