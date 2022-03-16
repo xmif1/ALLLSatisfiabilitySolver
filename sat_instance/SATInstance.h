@@ -59,7 +59,7 @@ class SATInstance{
 
         Statistics* parallel_solve();
         Statistics* sequential_solve() const;
-        ClausesArray* parallel_greedy_mis_join(vector<ClausesArray*>* sets);
+        ClausesArray* greedy_parallel_mis_join(vector<ClausesArray*>* sets);
         static ClausesArray* greedy_mis_join(ClausesArray* set1, ClausesArray* set2);
 };
 

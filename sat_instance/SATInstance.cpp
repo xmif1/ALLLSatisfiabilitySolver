@@ -261,8 +261,8 @@ Statistics* SATInstance::parallel_solve(){
 
         delete unsat_clauses; // Memory management
 
-        // Join the n_thread MISs {I_t} into a single MIS (through the parallel_greedy_mis_join() function)
-        auto max_indep_unsat_clauses = parallel_greedy_mis_join(indep_unsat_clauses);
+        // Join the n_thread MISs {I_t} into a single MIS (through the greedy_parallel_mis_join() function)
+        auto max_indep_unsat_clauses = greedy_parallel_mis_join(indep_unsat_clauses);
 
         // If max_indep_unsat_clauses is empty, then no unsat clauses have been found across all threads - SATISFIED
         if(max_indep_unsat_clauses->empty()){
@@ -348,7 +348,7 @@ ClausesArray* SATInstance::greedy_mis_join(ClausesArray* set1, ClausesArray* set
 }
 
 // Utility function for recursively and in parallel joining k disjoint maximally independent sets into a single one
-ClausesArray* SATInstance::parallel_greedy_mis_join(vector<ClausesArray*>* sets){
+ClausesArray* SATInstance::greedy_parallel_mis_join(vector<ClausesArray*>* sets){
     // BASE CASE
     if(sets->size() == 1){ // If only a single MIS is passed as input, then simply return it
         auto ret_set = sets->at(0);
@@ -361,7 +361,7 @@ ClausesArray* SATInstance::parallel_greedy_mis_join(vector<ClausesArray*>* sets)
          * single MIS using the greedy_mis_join() algorithm. Note that in the case of an odd number of sets, one is not
          * paired.
          *
-         * The parallel_greedy_mis_join is then called once again on the resulting sets, until the base case is satisfied.
+         * The greedy_parallel_mis_join is then called once again on the resulting sets, until the base case is satisfied.
          */
 
         auto joined_sets = new vector<ClausesArray*>; // Resulting MIS from pair--wise joins
@@ -408,6 +408,6 @@ ClausesArray* SATInstance::parallel_greedy_mis_join(vector<ClausesArray*>* sets)
 
         delete sets; // Memory management
 
-        return parallel_greedy_mis_join(joined_sets); // Recursive join of the resulting MISs
+        return greedy_parallel_mis_join(joined_sets); // Recursive join of the resulting MISs
     }
 }
