@@ -189,8 +189,8 @@ int main(int argc, char *argv[]){
     log_end = "Log "; output(log_end.append(time_str) + ": Completed solve; Duration: " +
                              to_string(solve_duration.count() / 1000.0) + "s\n\n", out_f, dump);
 
-    if(dump){ // Add solve time to statistics CSV
-        *stat_f << to_string(solve_duration.count() / 1000.0) + ",";
+    if(dump){ // Add solve time (in milliseconds) to statistics CSV
+        *stat_f << to_string(solve_duration.count()) + ",";
     }
 
     // =================================================================================================================
