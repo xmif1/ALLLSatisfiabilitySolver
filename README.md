@@ -10,6 +10,16 @@ Supervisor: Dr. Sandro Spina
 
 ---
 
+## Description
+
+The following repository consists of serial and parallel implementations of the SAT solver described by [1], implemented
+with consultation of [2] and [3].
+
+__The code here forms the main code artefact forming part of the CS APT, as required for the awarding of the B.Sc.
+(Hons) in Computer Science and Mathematics.__
+
+---
+
 ## Requirements
 
 This program is intended to run on 64-bit Linux and macOS (Intel and Apple Silicon) based systems, on which it has been tested thoroughly.
@@ -27,7 +37,17 @@ Clone the repository, and ```cd``` into the project directory. Then run:
 
 ## Execution Instructions
 
-Simply ```cd``` into the directory containing the compiled executable, and run ```./ALLLSatisfiabilitySolver [-p [n_threads]] <path/to/sat_instance.cnf>```, where the required filepath ```path/to/sat_instance.cnf``` is the path to the CNF SAT instance to be loaded, represented in the DIMACS format, and ```-p``` is an optional positional argument specifying that parallelisation should be used wherever possible. By default, if ```n_threads``` is not specified, this will use all available (physical) threads on the system. Otherwise, ```n_threads``` are used for parallelisation.
+Simply ```cd``` into the directory containing the compiled executable, and run 
+```./ALLLSatisfiabilitySolver [-o] [-p [n_threads]] <path/to/sat_instance.cnf>```. 
+
+The required filepath ```path/to/sat_instance.cnf``` is the path to the CNF SAT instance to be loaded, represented in the DIMACS format.
+
+The optional positional argument```-o``` specifies that command line output should be persisted to disk as a ```.out```
+text file, along with any statistics gathered during the solve saved as a ```.csv``` file.
+
+The optional positional argument```-p``` specifies that parallelisation should be used wherever possible.
+
+By default, if ```n_threads``` is not specified, this will use all available (physical) threads on the system. Otherwise, ```n_threads``` are used for parallelisation.
 
 ---
 
