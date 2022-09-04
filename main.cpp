@@ -2,11 +2,15 @@
 #include <fstream>
 #include <cstring>
 #include <chrono>
+#include <limits>
 #include <ctime>
 
 #include <omp.h>
+#include <boost/program_options.hpp>
 
 #include "sat_instance/SATInstance.h"
+
+using namespace boost::program_options;
 
 void output(const string& str, ofstream* out_f, bool dump);
 
@@ -33,80 +37,73 @@ void output(const string& str, ofstream* out_f, bool dump);
  */
 
 int main(int argc, char *argv[]){
-    int n_threads = 0; // number of threads (will be 0 if sequential, > 1 if parallel)
-    bool dump = false; // flag signally whether solver meta-data and statistics is to be dumped to a text file
-    string cnf_fpath;  // path to CNF instance
+    int n_threads = 0;    // number of threads (will be 0 if sequential, > 1 if parallel)
+    int cache_depth = 0;  // maximum number of cached clause dependencies (used for memory usage limitation)
+    bool dump = false;    // flag signalling whether solver meta-data and statistics is to be dumped to a text file
+    string cnf_fpath;     // path to CNF instance
 
     // =================================================================================================================
     // ------------------------------------------------ OPTION PARSING -------------------------------------------------
     // =================================================================================================================
 
-    /* OPTIONS: [-o] [-p [n_threads]] <cnf_file_path>
+    /* OPTIONS: [-h] [-o] [-p n_threads] [-c cache_depth] --sat <cnf_file_path>
      * where: i. -o is an argument signalling output of solver meta-data and statistics to text files
-     *       ii. -p is an argument signalling parallel solving; if the optional int value 'n_threads' is not passed, the
+     *       ii. -p is an argument signalling parallel solving; if the int value 'n_threads' is < 0, the
      *           solver will use all available (physical) processor threads; otherwise, 'n_threads' are used.
+     *           Note: the number of threads used is min(n_threads, omp_get_num_procs())
+     *      iii. -c is an argument signalling whether caching is to be used or not; if the int value 'cache_depth' is
+     *           < 0, the solver will cache INT_MAX clause dependencies.
      */
-    if(argc <= 1){ // if file path to a CNF instance not given, throw runtime error
-        throw std::runtime_error("The filepath to the DIMACS formatted CNF SAT instance was not specified...exiting...");
-    }
-    else if(argc > 5){ // else if too many options given, throw runtime error
-        throw std::runtime_error("Too many parameters specified...exiting...");
-    }
-    else if(argc == 3 && strcmp(argv[1], "-o") == 0){ // if output flag -o passed
-        cnf_fpath = argv[2];
-        dump = true;
-    }
-    else if(argc == 3 && strcmp(argv[1], "-p") == 0){ // if parallelisation flag -p passed (but n_threads not specified)
-        cnf_fpath = argv[2];
-        n_threads = omp_get_num_procs(); // get number of (physical) threads available
-        if(n_threads < 2){ // if number of physical threads is 1
-            n_threads = 0; // then do not parallelise and use sequential solver
-        }
-    }
-    // if parallelisation flag -p passed and n_threads specified
-    else if(argc == 4 && strcmp(argv[1], "-p") == 0 && strcmp(argv[2], "-o") != 0){
-        cnf_fpath = argv[3];
-        n_threads = stoi(argv[2]);
-        if(n_threads > omp_get_num_procs() || n_threads < 2){ // check that n_threads is a valid value, else throw error
-            throw std::runtime_error("Invalid number of threads specified...exiting...");
-        }
-    }
-    // if parallisation flag -p passed (but n_threads not specified) and output flag -o passed (in any order)
-    else if(argc == 4 && ((strcmp(argv[1], "-o") == 0 && (strcmp(argv[2], "-p")) == 0) ||
-                          (strcmp(argv[1], "-p") == 0 && (strcmp(argv[2], "-o")) == 0))){
-        cnf_fpath = argv[3];
-        dump = true;
 
-        n_threads = omp_get_num_procs(); // get number of (physical) threads available
-        if(n_threads < 2){ // if number of physical threads is 1
-            n_threads = 0; // then do not parallelise and use sequential solver
-        }
-    }
-    // if the output flag -o is passed, followed by parallisation flag -p passed and n_threads specified
-    else if(argc == 5 && (strcmp(argv[1], "-o") == 0 && (strcmp(argv[2], "-p")) == 0)){
-        cnf_fpath = argv[4];
-        dump = true;
+    try {
+        options_description desc{"Options"};
+        desc.add_options()
+            ("help,h", "Help")
+            ("output,o", "Output meta-data and statistics to separate files")
+            ("parallel,p", value<int>()->default_value(0), "Use parallel solver")
+            ("cache,c", value<int>()->default_value(0), "Use clause dependency caching")
+            ("sat", value<string>()->required(), "Path to SAT instance in DIMACS-CNF format");
 
-        n_threads = stoi(argv[3]);
-        if(n_threads > omp_get_num_procs() || n_threads < 2){ // check that n_threads is a valid value, else throw error
-            throw std::runtime_error("Invalid number of threads specified...exiting...");
-        }
-    }
-    // if parallisation flag -p passed and n_threads specified, followed by the output flag -o
-    else if(argc == 5 && (strcmp(argv[1], "-p") == 0 && (strcmp(argv[3], "-o")) == 0)){
-        cnf_fpath = argv[4];
-        dump = true;
+        variables_map vm;
+        store(parse_command_line(argc, argv, desc), vm);
 
-        n_threads = stoi(argv[2]);
-        if(n_threads > omp_get_num_procs() || n_threads < 2){ // check that n_threads is a valid value, else throw error
-            throw std::runtime_error("Invalid number of threads specified...exiting...");
+        if(vm.count("help")) {
+            std::cout << desc << '\n';
+            exit(0);
+        } else {
+            notify(vm);
+
+            if(vm.count("output")){
+                dump = true;
+            }
+
+            if(vm.count("parallel")){
+                if (vm["parallel"].as<int>() < 0 || vm["parallel"].as<int>() > omp_get_num_procs()) {
+                    n_threads = omp_get_num_procs();
+                } else if (vm["parallel"].as<int>() > 0) {
+                    n_threads = vm["parallel"].as<int>();
+                } else {
+                    n_threads = 0;
+                }
+            }
+
+            if(vm.count("cache")){
+                if (vm["cache"].as<int>() < 0) {
+                    cache_depth = INT_MAX;
+                } else if (vm["cache"].as<int>() > 2) {
+                    cache_depth = vm["cache"].as<int>();
+                } else {
+                    cache_depth = 0;
+                }
+            }
+
+            if (vm.count("sat")) {
+                cnf_fpath = vm["sat"].as<string>();
+            }
         }
-    }
-    else if(argc == 2){ // if no options passed, only path to CNF instance
-        cnf_fpath = argv[1];
-    }
-    else{ // otherwise throw a runtime error if any other argument combination is given
-        throw std::runtime_error("Invalid options specified...exiting...");
+    } catch (const error &e) {
+        cerr << e.what() << endl;
+        exit(1);
     }
 
     // =================================================================================================================
@@ -139,8 +136,55 @@ int main(int argc, char *argv[]){
     string log_start = "Log "; output(log_start.append(time_str) + ": Reading CNF file\n", out_f, dump);
     auto start = chrono::high_resolution_clock::now();
 
+    /* Loading a SAT instance is a two-step operation consisting of the following:
+     *  i. Loading meta-data (number of variables, clauses etc) as well as reading the clauses from the specified .cnf file,
+     *     using the CNF_IO package (available at https://people.sc.fsu.edu/~jburkardt/cpp_src/cnf_io/cnf_io.html)
+     * ii. Encoding literals such that a variable x, where x is a non-negative integer, is mapped to 2x while its negation
+     *     is mapped to 2x + 1. For this encoding, we can obtain the variable associated with a literal by a single left
+     *     shift i.e. the variable v associated with a literal l is: v = l >> 1.
+     */
+
+    int c_num, v_num, l_num;
+    int* l_c_num;
+    int* l_val;
+
+    // Read the meta-data from the .cnf file
+    if(cnf_header_read(cnf_fpath, &v_num, &c_num, &l_num)){
+        cout << "The header information could not be read. Exiting..." << endl;
+        exit(1);
+    }
+
+    l_c_num = new int[c_num];
+    l_val = new int[l_num];
+
+    // Read the clause data from the .cnf file
+    cnf_data_read(cnf_fpath, v_num, c_num, l_num, l_c_num, l_val);
+
+    int c, l, l_c;
+
+    l = 0; auto* clauses = new vector<Clause<uint32_t>*>;
+    for(c = 0; c < c_num; c++){ // For each read clauses, create a new Clause instance with its literals encoded in the
+        // aforementioned manner
+        // l_c_num[c] = # of signed literals in clause c
+        auto literals = new vector<uint32_t>;
+
+        for(l_c = 0; l_c < l_c_num[c]; l_c++){ // For every literal in the clause...
+            /* Note that the DIMACS format uses 0 as a special character, hence the variables are labelled as positive
+             * (and hence non-zero) integers; Since we wish to use the variable x as an index to an array (where array
+             * index starts from zero), we wish to shift the DIMACS variable label x to x - 1. Hence the DIMACS variable
+             * x is encoded as 2x - 2. The negation of a variable x in DIMACS is the negative integer -x, hence applying
+             * the shift and encoding, it is mapped to 2x - 1.
+             */
+            literals->push_back((0 < l_val[l]) ? (2 * l_val[l]) - 2 : ((-2) * l_val[l]) - 1);
+
+            l += 1;
+        }
+
+        clauses->push_back(new Clause<uint32_t>(c, literals)); // Populate clauses array
+    }
+
     // Initialise new SATInstance from specified CNF file
-    auto satInstance = new SATInstance(cnf_fpath, n_threads);
+    auto satInstance = new SATInstance<uint32_t>(new VariablesArray<uint32_t>(v_num), clauses, n_threads, cache_depth);
 
     // Logging read complete...
     auto stop = chrono::high_resolution_clock::now();
@@ -153,14 +197,12 @@ int main(int argc, char *argv[]){
     // Display the SAT instance meta-data for monitoring purposes
     output("------------ INFORMATION ------------\n# Variables\t= " + to_string(satInstance->n_vars) +
     "\n# Clauses\t= " + to_string(satInstance->n_clauses) +
-    "\n# Literals\t= " + to_string(satInstance->n_literals) +
     "\n-------------------------------------\n\n", out_f, dump);
 
     if(dump){ // Save statistics to CSV file
         *stat_f << to_string(read_duration.count() / 1000.0) + ",";
         *stat_f << to_string(satInstance->n_vars) + ",";
         *stat_f << to_string(satInstance->n_clauses) + ",";
-        *stat_f << to_string(satInstance->n_literals) + ",";
     }
 
     // =================================================================================================================

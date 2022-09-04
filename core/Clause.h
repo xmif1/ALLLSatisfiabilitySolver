@@ -13,15 +13,34 @@
  * checking whether a clause is satisfied or not for a given variable assignment. May be expanded with additional
  * functionality later on, such as partitioning or thread-safety related mechanism.
  */
+template <typename tV>
 class Clause{
     public:
-        uint32_t* literals;
-        int n_literals;
+        vector<tV>* literals;
+        tV id;
 
-        Clause(uint32_t* literals, int n_literals);
+        explicit Clause(tV id, vector<tV>* literals){
+            this->id = id;
+            this->literals = literals;
+        }
 
-        bool is_not_satisfied(const bool* var_arr) const;
-        bool dependent_clauses(Clause* c) const;
+        /* Utility function for checking whether a variable assignment of a SAT instance (represented as a VariablesArray
+         * instance) satisfies or not the SAT instance. Returns true if the clause is NOT satisfied, and returns false
+         * otherwise.
+         */
+        bool is_not_satisfied(const bool* var_arr) const{
+            for(auto& l : *literals){ // For every literal in the clause...
+                /* Let v = literals[i] >> 1 (i.e. v is the variable associated with the literal).
+                 * If the i^th literal is encoded to an odd number (literals[i] & 1) then check if !(var_arr->vars)[v] is true,
+                 * else check if (var_arr->vars)[v] is true.
+                 */
+                if((l & 1) ? !(var_arr[l >> 1]) : var_arr[l >> 1]){
+                    return false; // Clause is satisfied, hence we answer 'false' to the question 'Is the clause NOT satisfied?'
+                }
+            }
+
+            return true; // Clause is not satisfied, hence we answer 'true' to the question 'Is the clause NOT satisfied?'
+        }
 };
 
 
