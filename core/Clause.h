@@ -17,11 +17,11 @@ template <typename tV>
 class Clause{
     public:
         vector<tV>* literals;
-        tV id;
+        unsigned short int t_id{};
 
-        explicit Clause(tV id, vector<tV>* literals){
-            this->id = id;
+        explicit Clause(vector<tV>* literals, unsigned short int t_id){
             this->literals = literals;
+            this->t_id = t_id;
         }
 
         /* Utility function for checking whether a variable assignment of a SAT instance (represented as a VariablesArray
