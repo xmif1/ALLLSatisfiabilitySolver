@@ -142,6 +142,7 @@ class SATInstance{
              */
 
             vector<ClauseCache*> caches;
+            ClausesArray deleteKeys;
             vector<RBG<default_random_engine>*> rbg_ensemble;
 
             // Initialise ensembles of RBGs and clause_iterators...
@@ -157,6 +158,9 @@ class SATInstance{
 
                 // Initialise caching structures
                 caches.push_back(new ClauseCache());
+
+                // Initialise deletion keys for hash maps
+                deleteKeys.push_back(new Clause<uint32_t>(nullptr, i));
             }
 
             auto unsat_clauses = new vector<ClauseHashSet*>;
@@ -164,7 +168,8 @@ class SATInstance{
             // Initialise an empty vector U_t for the unsatisfied clauses found by each thread
             for(int t = 0; t < n_threads; t++){
                 unsat_clauses->push_back(new ClauseHashSet);
-                unsat_clauses->at(t)->set_empty_key(0);
+                unsat_clauses->at(t)->set_empty_key(nullptr);
+                unsat_clauses->at(t)->set_deleted_key(deleteKeys.at(t));
             }
 
             omp_set_num_threads(n_threads);
@@ -185,6 +190,7 @@ class SATInstance{
                     for(int t = 0; t < n_threads; t++){
                         for(ClauseHashSet::iterator clause = clauses->at(t)->begin(); clause != clauses->at(t)->end(); ++clause){
                             if((*clause)->is_not_satisfied(var_arr->vars)){
+                                (*clause)->t_id = t;
                                 (*unsat_clauses->at(t)).insert(*clause);
                             }
                         }
@@ -240,7 +246,6 @@ class SATInstance{
 
                         if(independent){ // If independent, then add to independent set I_t
                             (*indep_unsat_clauses->at(t)).push_back(*clause);
-                            unsat_clauses->at(t)->erase(clause);
                         }
                     } // At the end, I_t will be a MIS since all clauses in U_t have been exhausted
                 }
@@ -248,10 +253,8 @@ class SATInstance{
                 // Join the n_thread MISs {I_t} into a single MIS (through the greedy_parallel_mis_join() function)
                 auto max_indep_unsat_clauses = greedy_parallel_mis_join(indep_unsat_clauses);
 
-                // If max_indep_unsat_clauses is empty, then no unsat clauses have been found across all threads - SATISFIED
-                if(max_indep_unsat_clauses->empty()){
-                    delete max_indep_unsat_clauses; // Memory management
-                    // break;
+                for (Clause<uint32_t>* clause : *max_indep_unsat_clauses) {
+                    unsat_clauses->at(clause->t_id)->erase(clause);
                 }
 
                 statistics->avg_mis_size += max_indep_unsat_clauses->size(); // Update statistics
@@ -408,7 +411,7 @@ class SATInstance{
                         idx2 = set2->erase(idx2);
                     }
                     else{ // else maintain y in set2 and check the next element y' (if any) in set2
-                        idx2++;
+                        ++idx2;
                     }
                 }
 
@@ -420,8 +423,10 @@ class SATInstance{
              * all the elements in the resulting MIS thus far. Hence we simply take the union of the two sets (the current
              * resulting set and the augmented set2).
              */
-            for(auto& c: *set2){ // Added every element in the augmented set2 to the resulting MIS
-                result->push_back(c);
+            auto idx2 = set2->begin();
+            while(idx2 != set2->end()){ // Add every element in the augmented set2 to the resulting MIS
+                result->push_back(*idx2);
+                idx2 = set2->erase(idx2); // memory management
             }
 
             return result;
@@ -431,10 +436,7 @@ class SATInstance{
         ClausesArray* greedy_parallel_mis_join(vector<ClausesArray*>* sets){
             // BASE CASE
             if(sets->size() == 1){ // If only a single MIS is passed as input, then simply return it
-                auto ret_set = sets->at(0);
-                delete sets;
-
-                return ret_set;
+                return sets->at(0);
             }
             else{ // RECURSIVE CASE
                 /* The join works by pairing the independent sets passed as input, and (in parallel) each pair is joined
@@ -455,7 +457,7 @@ class SATInstance{
 
                     // Find the input MIS with the largest size
                     auto max_idx = sets->begin();
-                    for(auto idx = sets->begin(); idx != sets->end(); idx++){
+                    for(auto idx = sets->begin(); idx != sets->end(); ++idx){
                         if((*max_idx)->size() < (*idx)->size()){
                             max_idx = idx;
                         }
@@ -475,7 +477,7 @@ class SATInstance{
                 #pragma omp parallel for schedule(static, 1) default(none) shared(n_pairs, offset, sets, joined_sets)
                 for(int t = 0; t < n_pairs; t++){
                     // Join pairs greedily into a single independent set...
-                    if(sets->at((2 * t) + 1)->size() <= sets->at(2 * t)->size()) {
+                    if(sets->at((2 * t) + 1)->size() < sets->at(2 * t)->size()) {
                         joined_sets->at(offset + t) = greedy_mis_join(sets->at(2 * t), sets->at((2 * t) + 1));
                     }
                     else{
