@@ -1,15 +1,13 @@
 #include <iostream>
-#include <fstream>
-#include <cstring>
 #include <chrono>
-#include <limits>
 #include <ctime>
 
-#include <omp.h>
 #include <google/dense_hash_set>
 #include <boost/program_options.hpp>
 
-#include "sat_instance/SATInstance.h"
+#include "SATInstance.h"
+
+#include "cnf_io/cnf_io.h"
 
 using namespace boost::program_options;
 

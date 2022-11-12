@@ -16,11 +16,9 @@
 #include <google/dense_hash_set>
 #include <boost/functional/hash.hpp>
 
-#include "../cnf_io/cnf_io.h"
-
-#include "../core/RandomBoolGenerator.h"
-#include "../core/VariablesArray.h"
-#include "../core/Clause.h"
+#include "RandomBoolGenerator.h"
+#include "VariablesArray.h"
+#include "Clause.h"
 
 using namespace std;
 
@@ -142,7 +140,6 @@ class SATInstance{
              */
 
             vector<ClauseCache*> caches;
-            ClausesArray deleteKeys;
             vector<RBG<default_random_engine>*> rbg_ensemble;
 
             // Initialise ensembles of RBGs and clause_iterators...
@@ -158,9 +155,8 @@ class SATInstance{
 
                 // Initialise caching structures
                 caches.push_back(new ClauseCache());
-
-                // Initialise deletion keys for hash maps
-                deleteKeys.push_back(new Clause<uint32_t>(nullptr, i));
+                caches.at(i)->set_empty_key({new Clause<uint32_t>(nullptr, i), new Clause<uint32_t>(nullptr, i)});
+                caches.at(i)->set_deleted_key({new Clause<uint32_t>(nullptr, i), new Clause<uint32_t>(nullptr, i)});
             }
 
             auto unsat_clauses = new vector<ClauseHashSet*>;
@@ -168,8 +164,8 @@ class SATInstance{
             // Initialise an empty vector U_t for the unsatisfied clauses found by each thread
             for(int t = 0; t < n_threads; t++){
                 unsat_clauses->push_back(new ClauseHashSet);
-                unsat_clauses->at(t)->set_empty_key(nullptr);
-                unsat_clauses->at(t)->set_deleted_key(deleteKeys.at(t));
+                unsat_clauses->at(t)->set_empty_key(new Clause<uint32_t>(nullptr, t));
+                unsat_clauses->at(t)->set_deleted_key(new Clause<uint32_t>(nullptr, t));
             }
 
             omp_set_num_threads(n_threads);
@@ -190,7 +186,6 @@ class SATInstance{
                     for(int t = 0; t < n_threads; t++){
                         for(ClauseHashSet::iterator clause = clauses->at(t)->begin(); clause != clauses->at(t)->end(); ++clause){
                             if((*clause)->is_not_satisfied(var_arr->vars)){
-                                (*clause)->t_id = t;
                                 (*unsat_clauses->at(t)).insert(*clause);
                             }
                         }
@@ -255,6 +250,10 @@ class SATInstance{
 
                 for (Clause<uint32_t>* clause : *max_indep_unsat_clauses) {
                     unsat_clauses->at(clause->t_id)->erase(clause);
+                }
+
+                for (int t = 0; t < n_threads; t++) {
+                    unsat_clauses->at(t)->resize(0);
                 }
 
                 statistics->avg_mis_size += max_indep_unsat_clauses->size(); // Update statistics
