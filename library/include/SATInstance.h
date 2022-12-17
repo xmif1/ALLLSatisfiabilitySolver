@@ -38,46 +38,39 @@ typedef struct Statistics{ // Structure for maintaining some simple statistics o
  */
 template <typename tV>
 class SATInstance{
-    typedef vector<Clause<uint32_t>*> ClausesArray;
-    typedef pair<Clause<uint32_t>*, Clause<uint32_t>*> ClausePair;
-    typedef google::dense_hash_set<Clause<uint32_t>*, boost::hash<Clause<uint32_t>*>> ClauseHashSet;
-    typedef google::dense_hash_set<ClausePair, boost::hash<ClausePair>> ClauseCache;
 
     public:
+        typedef vector<Clause<tV>*> ClausesArray;
+        typedef pair<Clause<tV>*, Clause<tV>*> ClausePair;
+        typedef google::dense_hash_set<Clause<tV>*, boost::hash<Clause<tV>*>> ClauseHashSet;
+        typedef google::dense_hash_set<ClausePair, boost::hash<ClausePair>> ClauseCache;
+
         tV n_vars;
         ull n_clauses = 0;
 
         VariablesArray<tV>* var_arr;
-        vector<ClauseHashSet*>* clauses{};
 
         // Constructor for a SATInstance object
-        SATInstance(VariablesArray<tV>* var_arr, vector<ClauseHashSet*>* clauses, int n_threads, int cache_depth){
+        SATInstance(VariablesArray<tV>* var_arr, int n_threads, int cache_depth){
             this->var_arr = var_arr;                        // Encoded variables array
-            this->clauses = clauses;                        // Clauses composing the SAT instance
             this->n_threads = n_threads;                    // Number of threads for solving (if using parallel solver)
             this->cache_depth = cache_depth;                // Size of clause dependency hash map
 
             n_vars = var_arr->n_vars;                       // Number of variables in SAT instance
-
-            for(auto c : *clauses) {    // Number of clauses in SAT instance
-                n_clauses += c->size();
-            }
         }
 
         // SAT solver based on the Algorithmic Lovasz Local Lemma of Moser and Tardos (2010); wrapper to either sequential
         // or parallel solver depending on whether 1 or more threads specified during instantiation.
-        Statistics* solve(){
-            return parallel_solve();
-//            if(n_threads){
-//                return parallel_solve();
-//            }
-//            else{
-//                return sequential_solve();
-//            }
+        Statistics* solve(vector<ClauseHashSet*>* clauses, bool stream){
+            for(auto c : *clauses) {    // Number of clauses in SAT instance
+                n_clauses += c->size();
+            }
+
+            return parallel_solve(clauses, stream);
         }
 
         // Convenience function for checking whether the assignments in var_arr represent a valid solution or not.
-        bool verify_validity() const{
+        bool verify_validity(vector<ClauseHashSet*>* clauses) const{
             for(auto clauseArr : *clauses){
                 for(auto clause = clauseArr->begin(); clause != clauseArr->end(); clause++){
                     if((*clause)->is_not_satisfied(var_arr->vars)) {
@@ -102,7 +95,7 @@ class SATInstance{
          * and parallel divide-and-conquer generation of non-trivial independent sets of unsatisfied clauses; the sets
          * of independent unsatisfied clauses chosen by each thread is done in a pseudo-random manner.
          */
-        Statistics* parallel_solve(){
+        Statistics* parallel_solve(vector<ClauseHashSet*>* clauses, bool stream){
             auto statistics = new Statistics;
 
             /* Each thread will be allocated a batch of clauses, divided dynamically amongst the threads. For each of
@@ -155,8 +148,8 @@ class SATInstance{
 
                 // Initialise caching structures
                 caches.push_back(new ClauseCache());
-                caches.at(i)->set_empty_key({new Clause<uint32_t>(nullptr, i), new Clause<uint32_t>(nullptr, i)});
-                caches.at(i)->set_deleted_key({new Clause<uint32_t>(nullptr, i), new Clause<uint32_t>(nullptr, i)});
+                caches.at(i)->set_empty_key({new Clause<tV>(nullptr, i), new Clause<tV>(nullptr, i)});
+                caches.at(i)->set_deleted_key({new Clause<tV>(nullptr, i), new Clause<tV>(nullptr, i)});
             }
 
             auto unsat_clauses = new vector<ClauseHashSet*>;
@@ -164,8 +157,8 @@ class SATInstance{
             // Initialise an empty vector U_t for the unsatisfied clauses found by each thread
             for(int t = 0; t < n_threads; t++){
                 unsat_clauses->push_back(new ClauseHashSet);
-                unsat_clauses->at(t)->set_empty_key(new Clause<uint32_t>(nullptr, t));
-                unsat_clauses->at(t)->set_deleted_key(new Clause<uint32_t>(nullptr, t));
+                unsat_clauses->at(t)->set_empty_key(new Clause<tV>(nullptr, t));
+                unsat_clauses->at(t)->set_deleted_key(new Clause<tV>(nullptr, t));
             }
 
             omp_set_num_threads(n_threads);
@@ -182,9 +175,9 @@ class SATInstance{
 
                 if(allEmpty){
                     // Split clauses in n_threads batches {C_j}, in parallel through dynamic allocation
-                    #pragma omp parallel for schedule(static, 1) default(none) shared(unsat_clauses)
+                    #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, unsat_clauses)
                     for(int t = 0; t < n_threads; t++){
-                        for(ClauseHashSet::iterator clause = clauses->at(t)->begin(); clause != clauses->at(t)->end(); ++clause){
+                        for(auto clause = clauses->at(t)->begin(); clause != clauses->at(t)->end(); ++clause){
                             if((*clause)->is_not_satisfied(var_arr->vars)){
                                 (*unsat_clauses->at(t)).insert(*clause);
                             }
@@ -248,7 +241,7 @@ class SATInstance{
                 // Join the n_thread MISs {I_t} into a single MIS (through the greedy_parallel_mis_join() function)
                 auto max_indep_unsat_clauses = greedy_parallel_mis_join(indep_unsat_clauses);
 
-                for (Clause<uint32_t>* clause : *max_indep_unsat_clauses) {
+                for (Clause<tV>* clause : *max_indep_unsat_clauses) {
                     unsat_clauses->at(clause->t_id)->erase(clause);
                 }
 
@@ -272,7 +265,15 @@ class SATInstance{
                     statistics->n_thread_resamples.at(t_id) += (max_indep_unsat_clauses->at(c))->literals->size();
                 }
 
+                max_indep_unsat_clauses->clear();
                 delete max_indep_unsat_clauses; // Memory management
+
+                if(stream){
+                    unsat_clauses->clear();
+                    delete unsat_clauses;
+
+                    break;
+                }
             }
 
             for(int t = 0; t < n_threads; t++){
@@ -282,71 +283,6 @@ class SATInstance{
 
             return statistics;
         }
-
-        /* Serial Algorithmic Lovasz Local Lemma of Moser and Tardos (2010), with 'shuffling' of the clauses vector to
-         * satisfy the 'there exists an unsatisfied clause' condition stochastically.
-         */
-//        Statistics* sequential_solve() const{
-//            auto statistics = new Statistics;
-//
-//            Clause<tV>* unsat_clause;
-//
-//            // Get the system default random generator with a random seed
-//            auto engine = new default_random_engine(std::random_device{}());
-//
-//            // Initialise an instance of a random boolean generator...
-//            auto rbg = new RBG<default_random_engine>(*engine);
-//
-//            ull iterator = P_9223372036854775783 % n_clauses; // Starting seed for an LCG based index to the this.clauses vector,
-//            // which pseudo-randomly visits all the clauses exactly once with
-//            // a period of n_clauses, allowing for efficient 'shuffling' of the
-//            // clauses vector;
-//
-//            /* Note that by shuffling through the clauses array, we are effectively breaking any 'local minima' in the search
-//             * space; in between iterations, we do not get stuck successively in the same clause until it becomes satisfied, but
-//             * rather we visit other unsatisfied clauses and satisfy those (which in turn may influence out original unsatisfied
-//             * clause).
-//             */
-//
-//            bool solved = false;
-//            while(!solved){ // While there exists a clause c which is not satisfied...
-//                bool unsat_exists = false;
-//                statistics->n_iterations += 1; // Update statistics
-//
-//                for(ull i = 0; i < n_clauses; i++){ // For each clause...
-//                    // Fetch the clause specified at the (class variable) index C, and check if it is satisfied...
-//
-//                    // If it is not satisfied, return a ptr to the Clause instance
-//                    if((clauses->at(iterator))->is_not_satisfied(var_arr->vars)){
-//                        unsat_clause = clauses->at(iterator);
-//                        unsat_exists = true;
-//                        break;
-//                    }
-//                    else{ /* Otherwise, calculate the next index C by means of the LCG; note that the LCG has a period of
-//                   * n_clauses and hence we iterate over each clause exactly once, in a non-linear fashion; this is
-//                   * equivalent to a pseudo-random shuffling of the clauses vector, and is required for optimal
-//                   * convergence of the Algorithmic Lovasz Local Lemma method.
-//                   */
-//                        iterator = (iterator + P_9223372036854775783) % n_clauses;
-//                    }
-//                }
-//
-//                if(unsat_exists){
-//                    // For every variable in the clause (obtained by left shifting by 1 the literal encoding), randomly
-//                    // re-sample
-//                    for(auto& l : *(unsat_clause->literals)){
-//                        (var_arr->vars)[l >> 1] = rbg->sample();
-//                    }
-//
-//                    statistics->n_resamples += unsat_clause->literals->size(); // Update statistics
-//                }
-//                else{
-//                    solved = true;
-//                }
-//            }
-//
-//            return statistics;
-//        }
 
         // =============================================================================================================
         // ------------------------------------------------- UTILITIES -------------------------------------------------
@@ -484,10 +420,14 @@ class SATInstance{
                     }
 
                     // Memory management (we only require the resulting joined set from two initial sets)
+                    sets->at(2*t)->clear();
                     delete sets->at(2*t);
+
+                    sets->at((2*t) + 1)->clear();
                     delete sets->at((2*t) + 1);
                 }
 
+                sets->clear();
                 delete sets; // Memory management
 
                 return greedy_parallel_mis_join(joined_sets); // Recursive join of the resulting MISs

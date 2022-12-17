@@ -171,7 +171,6 @@ int main(int argc, char *argv[]){
         // aforementioned manner
         // l_c_num[c] = # of signed literals in clause c
         auto literals = new vector<uint32_t>;
-
         for(l_c = 0; l_c < l_c_num[c]; l_c++){ // For every literal in the clause...
             /* Note that the DIMACS format uses 0 as a special character, hence the variables are labelled as positive
              * (and hence non-zero) integers; Since we wish to use the variable x as an index to an array (where array
@@ -191,7 +190,7 @@ int main(int argc, char *argv[]){
     }
 
     // Initialise new SATInstance from specified CNF file
-    auto satInstance = new SATInstance<uint32_t>(new VariablesArray<uint32_t>(v_num), clauses, n_threads, cache_depth);
+    auto satInstance = new SATInstance<uint32_t>(new VariablesArray<uint32_t>(v_num), n_threads, cache_depth);
 
     // Logging read complete...
     auto stop = chrono::high_resolution_clock::now();
@@ -234,7 +233,7 @@ int main(int argc, char *argv[]){
     log_start = "Log "; output(log_start.append(time_str) + ": " + solve_info + "\n", out_f, dump);
     start = chrono::high_resolution_clock::now();
 
-    Statistics* statistics = satInstance->solve(); // Solving SAT instance and maintaining solve statistics
+    Statistics* statistics = satInstance->solve(clauses, false); // Solving SAT instance and maintaining solve statistics
 
     // Logging solve completion...
     stop = chrono::high_resolution_clock::now();
@@ -284,7 +283,7 @@ int main(int argc, char *argv[]){
     // ---------------------------------------------- VERIFYING SOLUTION -----------------------------------------------
     // =================================================================================================================
 
-    if(satInstance->verify_validity()){ // If solution is valid
+    if(satInstance->verify_validity(clauses)){ // If solution is valid
         // Print that instance is SATISFIABLE
         output("SATISFIABLE\n", out_f, dump);
 
