@@ -71,15 +71,22 @@ class SATInstance{
 
         // Convenience function for checking whether the assignments in var_arr represent a valid solution or not.
         bool verify_validity(vector<ClauseHashSet*>* clauses) const{
-            for(auto clauseArr : *clauses){
-                for(auto clause = clauseArr->begin(); clause != clauseArr->end(); clause++){
+            volatile bool valid = true;
+
+            #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, valid)
+            for(int t = 0; t < clauses->size(); t++){
+                for(auto clause = clauses->at(t)->begin(); clause != clauses->at(t)->end(); clause++){
+                    if(!valid){
+                        continue;
+                    }
+
                     if((*clause)->is_not_satisfied(var_arr->vars)) {
-                        return false;
+                        valid = false;
                     }
                 }
             }
 
-            return true;
+            return valid;
         }
 
     private:
