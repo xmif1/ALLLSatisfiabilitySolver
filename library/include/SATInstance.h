@@ -13,8 +13,6 @@
 #include <set>
 
 #include <omp.h>
-#include <google/dense_hash_set>
-#include <boost/functional/hash.hpp>
 
 #include "RandomBoolGenerator.h"
 #include "VariablesArray.h"
@@ -40,10 +38,7 @@ template <typename tV>
 class SATInstance{
 
     public:
-        typedef vector<Clause<tV>*> ClausesArray;
-        typedef pair<Clause<tV>*, Clause<tV>*> ClausePair;
-        typedef google::dense_hash_set<Clause<tV>*, boost::hash<Clause<tV>*>> ClauseHashSet;
-        typedef google::dense_hash_set<ClausePair, boost::hash<ClausePair>> ClauseCache;
+        typedef vector<Clause<tV>*> ClauseArray;
 
         tV n_vars;
         ull n_clauses = 0;
@@ -51,17 +46,16 @@ class SATInstance{
         VariablesArray<tV>* var_arr;
 
         // Constructor for a SATInstance object
-        SATInstance(VariablesArray<tV>* var_arr, int n_threads, int cache_depth){
+        SATInstance(VariablesArray<tV>* var_arr, int n_threads){
             this->var_arr = var_arr;                        // Encoded variables array
             this->n_threads = n_threads;                    // Number of threads for solving (if using parallel solver)
-            this->cache_depth = cache_depth;                // Size of clause dependency hash map
 
             n_vars = var_arr->n_vars;                       // Number of variables in SAT instance
         }
 
         // SAT solver based on the Algorithmic Lovasz Local Lemma of Moser and Tardos (2010); wrapper to either sequential
         // or parallel solver depending on whether 1 or more threads specified during instantiation.
-        Statistics* solve(vector<ClauseHashSet*>* clauses, bool stream){
+        Statistics* solve(vector<ClauseArray*>* clauses, bool stream){
             for(auto c : *clauses) {    // Number of clauses in SAT instance
                 n_clauses += c->size();
             }
@@ -70,7 +64,7 @@ class SATInstance{
         }
 
         // Convenience function for checking whether the assignments in var_arr represent a valid solution or not.
-        bool verify_validity(vector<ClauseHashSet*>* clauses) const{
+        bool verify_validity(vector<ClauseArray*>* clauses) const{
             volatile bool valid = true;
 
             #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, valid)
@@ -92,7 +86,6 @@ class SATInstance{
     private:
         // Prime number for LCG over the clauses array (which should be reasonably large enough...we hope...)
         int n_threads{};
-        int cache_depth{};
 
         // =============================================================================================================
         // ----------------------------------------------- ALLL SOLVERS ------------------------------------------------
@@ -102,7 +95,7 @@ class SATInstance{
          * and parallel divide-and-conquer generation of non-trivial independent sets of unsatisfied clauses; the sets
          * of independent unsatisfied clauses chosen by each thread is done in a pseudo-random manner.
          */
-        Statistics* parallel_solve(vector<ClauseHashSet*>* clauses, bool stream){
+        Statistics* parallel_solve(vector<ClauseArray*>* clauses, bool stream){
             auto statistics = new Statistics;
 
             /* Each thread will be allocated a batch of clauses, divided dynamically amongst the threads. For each of
@@ -139,7 +132,6 @@ class SATInstance{
              *          5. For each clause C in S, in parallel resample the variables in C using an RBG.
              */
 
-            vector<ClauseCache*> caches;
             vector<RBG<default_random_engine>*> rbg_ensemble;
 
             // Initialise ensembles of RBGs and clause_iterators...
@@ -152,71 +144,54 @@ class SATInstance{
 
                 // Initialise statistics
                 statistics->n_thread_resamples.push_back(0);
-
-                // Initialise caching structures
-                caches.push_back(new ClauseCache());
-                caches.at(i)->set_empty_key({new Clause<tV>(nullptr, i), new Clause<tV>(nullptr, i)});
-                caches.at(i)->set_deleted_key({new Clause<tV>(nullptr, i), new Clause<tV>(nullptr, i)});
             }
 
-            auto unsat_clauses = new vector<ClauseHashSet*>;
+            auto unsat_clauses = new vector<ClauseArray*>;
 
             // Initialise an empty vector U_t for the unsatisfied clauses found by each thread
             for(int t = 0; t < n_threads; t++){
-                unsat_clauses->push_back(new ClauseHashSet);
-                unsat_clauses->at(t)->set_empty_key(new Clause<tV>(nullptr, t));
-                unsat_clauses->at(t)->set_deleted_key(new Clause<tV>(nullptr, t));
+                unsat_clauses->push_back(new ClauseArray());
             }
 
             omp_set_num_threads(n_threads);
             while(true){ // While there exists a clause c which is not satisfied...
                 statistics->n_iterations += 1; // Update statistics
 
-                bool allEmpty = true;
+                // Split clauses in n_threads batches {C_j}, in parallel through dynamic allocation
+                #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, unsat_clauses)
+                for(int t = 0; t < n_threads; t++){
+                    for(auto clause = clauses->at(t)->begin(); clause != clauses->at(t)->end(); ++clause){
+                        if((*clause)->is_not_satisfied(var_arr->vars)){
+                            unsat_clauses->at(t)->push_back(*clause);
+                        }
+                    }
+                }
+
+                bool solved = true;
                 for(auto unsatClauses : *unsat_clauses){
                     if(!unsatClauses->empty()){
-                        allEmpty = false;
+                        solved = false;
                         break;
                     }
                 }
 
-                if(allEmpty){
-                    // Split clauses in n_threads batches {C_j}, in parallel through dynamic allocation
-                    #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, unsat_clauses)
-                    for(int t = 0; t < n_threads; t++){
-                        for(auto clause = clauses->at(t)->begin(); clause != clauses->at(t)->end(); ++clause){
-                            if((*clause)->is_not_satisfied(var_arr->vars)){
-                                (*unsat_clauses->at(t)).insert(*clause);
-                            }
-                        }
-                    }
+                if(solved){
+                    // Memory management
+                    unsat_clauses->clear();
+                    delete unsat_clauses;
 
-                    bool solved = true;
-                    for(auto unsatClauses : *unsat_clauses){
-                        if(!unsatClauses->empty()){
-                            solved = false;
-                            break;
-                        }
-                    }
-
-                    if(solved){
-                        // Memory management
-                        unsat_clauses->clear();
-                        delete unsat_clauses;
-
-                        break;
-                    }
+                    break;
                 }
 
                 // Initialise an empty vector I_t for the MIS of unsatisfied clauses associated with U_t of each thread
-                auto indep_unsat_clauses = new vector<ClausesArray*>;
+                auto indep_unsat_clauses = new vector<ClauseArray*>;
                 for(int t = 0; t < n_threads; t++){
-                    indep_unsat_clauses->push_back(new ClausesArray);
+                    indep_unsat_clauses->push_back(new ClauseArray);
                 }
 
                 // Find a subset MIS I_t in each set of unsatisfied clauses U_t, in parallel (statically, one for each thread);
                 // As described earlier, we visit the clauses in each U_t in a pseudo-random order (effectively shuffling)
-                #pragma omp parallel for schedule(static, 1) default(none) shared(unsat_clauses, indep_unsat_clauses, caches)
+                #pragma omp parallel for schedule(static, 1) default(none) shared(unsat_clauses, indep_unsat_clauses)
                 for(int t = 0; t < n_threads; t++){
 
                     for(auto clause = unsat_clauses->at(t)->begin();
@@ -229,7 +204,7 @@ class SATInstance{
                         bool independent = true; // If current clause in U_t is dependent on some clause in the current
                         // state of the independent set I_t, then change flag to false.
                         for(auto& c: *(indep_unsat_clauses->at(t))){ // Check if dependent on any clause in I_t...
-                            if(dependent_clauses((*clause), c, cache_depth,caches.at(t))){
+                            if(dependent_clauses((*clause), c)){
 
                                 // If dependent, update independent flag to false and break (no need to continue checking -
                                 // the current clause in U_t will not be added to the independent set)
@@ -248,12 +223,8 @@ class SATInstance{
                 // Join the n_thread MISs {I_t} into a single MIS (through the greedy_parallel_mis_join() function)
                 auto max_indep_unsat_clauses = greedy_parallel_mis_join(indep_unsat_clauses);
 
-                for (Clause<tV>* clause : *max_indep_unsat_clauses) {
-                    unsat_clauses->at(clause->t_id)->erase(clause);
-                }
-
                 for (int t = 0; t < n_threads; t++) {
-                    unsat_clauses->at(t)->resize(0);
+                    unsat_clauses->at(t)->clear();
                 }
 
                 statistics->avg_mis_size += max_indep_unsat_clauses->size(); // Update statistics
@@ -297,16 +268,7 @@ class SATInstance{
 
         // Given two Clause instances, establishes whether the two are dependent or not. The criteria of dependency is
         // having one or more variables in common between the literals of the two clauses.
-        bool dependent_clauses(Clause<tV>* c1, Clause<tV>* c2, bool use_cache, ClauseCache* cached_clause_dependencies){
-            ClausePair pair_cIDs;
-
-            if(use_cache){
-                pair_cIDs = minmax(c1, c2);
-                if(auto d = cached_clause_dependencies->find(pair_cIDs); d != cached_clause_dependencies->end()){
-                    return false;
-                }
-            }
-
+        bool dependent_clauses(Clause<tV>* c1, Clause<tV>* c2){
             // For every pair (x, y) of literals between the two clauses...
             bool dependent = false;
             for(auto& l1 : *c1->literals){
@@ -324,21 +286,13 @@ class SATInstance{
                 }
             }
 
-            if(use_cache && !dependent){
-                if(cache_depth < cached_clause_dependencies->size()){
-                    cached_clause_dependencies->erase(cached_clause_dependencies->begin());
-                }
-
-                cached_clause_dependencies->insert(pair_cIDs);
-            }
-
             // Otherwise, we return false (independent if FOR ALL literal pairs, the underlying variables are distinct)
             return dependent;
         }
 
         // Utility function for constructing a maximally independent set (MIS) from two other such sets
-        ClausesArray* greedy_mis_join(ClausesArray* set1, ClausesArray* set2){
-            auto result = new ClausesArray; // The resulting MIS from joining set1 and set2
+        ClauseArray* greedy_mis_join(ClauseArray* set1, ClauseArray* set2){
+            auto result = new ClauseArray; // The resulting MIS from joining set1 and set2
 
             /* We begin by iterating across all the elements in set1 and checking it against every element in set2. If
              * for some element x in set1 there is an element y in set2 such that x and y are independent, then we delete
@@ -349,7 +303,7 @@ class SATInstance{
             while(idx1 != set1->end()){ // Consider an element x in set1...
                 auto idx2 = set2->begin();
                 while(idx2 != set2->end()){ // for every element y in set2
-                    if(dependent_clauses(*idx1, *idx2, false, nullptr)){ // if y and x are dependent, remove y from set2
+                    if(dependent_clauses(*idx1, *idx2)){ // if y and x are dependent, remove y from set2
                         idx2 = set2->erase(idx2);
                     }
                     else{ // else maintain y in set2 and check the next element y' (if any) in set2
@@ -375,10 +329,13 @@ class SATInstance{
         }
 
         // Utility function for recursively and in parallel joining k disjoint maximally independent sets into a single one
-        ClausesArray* greedy_parallel_mis_join(vector<ClausesArray*>* sets){
+        ClauseArray* greedy_parallel_mis_join(vector<ClauseArray*>* sets){
             // BASE CASE
             if(sets->size() == 1){ // If only a single MIS is passed as input, then simply return it
-                return sets->at(0);
+                auto ret_set = sets->at(0);
+                delete sets;
+
+                return ret_set;
             }
             else{ // RECURSIVE CASE
                 /* The join works by pairing the independent sets passed as input, and (in parallel) each pair is joined
@@ -389,7 +346,7 @@ class SATInstance{
                  * satisfied.
                  */
 
-                auto joined_sets = new vector<ClausesArray*>; // Resulting MIS from pair--wise joins
+                auto joined_sets = new vector<ClauseArray*>; // Resulting MIS from pair--wise joins
                 int offset = 0; // Index offset from which to start populating joined_sets (if odd then index 0 is
                 // populated with the largest input MIS, and the remaining are paired off and joined_sets is populated
                 // with the joined sets from index 1 onwards ie. offset is set to 1.

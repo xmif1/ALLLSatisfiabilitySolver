@@ -2,14 +2,15 @@
 #include <chrono>
 #include <ctime>
 
-#include <google/dense_hash_set>
 #include <boost/program_options.hpp>
 
 #include "SATInstance.h"
-
 #include "cnf_io/cnf_io.h"
 
 using namespace boost::program_options;
+
+typedef uint32_t UINT_T;
+typedef SATInstance<UINT_T>::ClauseArray ClauseArray;
 
 void output(const string& str, ofstream* out_f, bool dump);
 
@@ -37,7 +38,6 @@ void output(const string& str, ofstream* out_f, bool dump);
 
 int main(int argc, char *argv[]){
     int n_threads = 1;    // number of threads (will be 0 if sequential, > 1 if parallel)
-    int cache_depth = 0;  // maximum number of cached clause dependencies (used for memory usage limitation)
     bool dump = false;    // flag signalling whether solver meta-data and statistics is to be dumped to a text file
     string cnf_fpath;     // path to CNF instance
 
@@ -45,13 +45,11 @@ int main(int argc, char *argv[]){
     // ------------------------------------------------ OPTION PARSING -------------------------------------------------
     // =================================================================================================================
 
-    /* OPTIONS: [-h] [-o] [-p n_threads] [-c cache_depth] --sat <cnf_file_path>
+    /* OPTIONS: [-h] [-o] [-p n_threads] --sat <cnf_file_path>
      * where: i. -o is an argument signalling output of solver meta-data and statistics to text files
      *       ii. -p is an argument signalling parallel solving; if the int value 'n_threads' is < 0, the
      *           solver will use all available (physical) processor threads; otherwise, 'n_threads' are used.
      *           Note: the number of threads used is min(n_threads, omp_get_num_procs())
-     *      iii. -c is an argument signalling whether caching is to be used or not; if the int value 'cache_depth' is
-     *           < 0, the solver will ClauseCache INT_MAX clause dependencies.
      */
 
     try {
@@ -60,7 +58,6 @@ int main(int argc, char *argv[]){
             ("help,h", "Help")
             ("output,o", "Output meta-data and statistics to separate files")
             ("parallel,p", value<int>()->default_value(0), "Use parallel solver")
-            ("ClauseCache,c", value<int>()->default_value(0), "Use clause dependency caching")
             ("sat", value<string>()->required(), "Path to SAT instance in DIMACS-CNF format");
 
         variables_map vm;
@@ -83,16 +80,6 @@ int main(int argc, char *argv[]){
                     n_threads = vm["parallel"].as<int>();
                 } else {
                     n_threads = 1;
-                }
-            }
-
-            if(vm.count("ClauseCache")){
-                if (vm["ClauseCache"].as<int>() < 0) {
-                    cache_depth = INT_MAX;
-                } else if (vm["ClauseCache"].as<int>() > 2) {
-                    cache_depth = vm["ClauseCache"].as<int>();
-                } else {
-                    cache_depth = 0;
                 }
             }
 
@@ -160,17 +147,17 @@ int main(int argc, char *argv[]){
     cnf_data_read(cnf_fpath, v_num, c_num, l_num, l_c_num, l_val);
 
     int chunk_size = ceil(c_num / (double) n_threads);
-    auto* clauses = new vector<google::dense_hash_set<Clause<uint32_t>*, boost::hash<Clause<uint32_t>*>>*>;
+
+    auto clauses = new vector<ClauseArray*>();
     for(int t = 0; t < n_threads; t++){
-        clauses->push_back(new google::dense_hash_set<Clause<uint32_t>*, boost::hash<Clause<uint32_t>*>>);
-        clauses->at(t)->set_empty_key(nullptr);
+        clauses->push_back(new ClauseArray());
     }
 
     int c, l, l_c; l = 0; unsigned short int t = 0;
     for(c = 0; c < c_num; c++){ // For each read clauses, create a new Clause instance with its literals encoded in the
         // aforementioned manner
         // l_c_num[c] = # of signed literals in clause c
-        auto literals = new vector<uint32_t>;
+        auto literals = new vector<UINT_T>;
         for(l_c = 0; l_c < l_c_num[c]; l_c++){ // For every literal in the clause...
             /* Note that the DIMACS format uses 0 as a special character, hence the variables are labelled as positive
              * (and hence non-zero) integers; Since we wish to use the variable x as an index to an array (where array
@@ -183,14 +170,15 @@ int main(int argc, char *argv[]){
             l += 1;
         }
 
-        if(c > (t + 1) * chunk_size){ t += 1;}
+        if(c > (t + 1) * chunk_size){
+            t += 1;
+        }
 
-        auto* cKey = new uint32_t; *cKey = c+1;
-        clauses->at(t)->insert(new Clause<uint32_t>(literals, t)); // Populate clauses array
+        clauses->at(t)->push_back(new Clause<UINT_T>(literals, t)); // Populate clauses array
     }
 
     // Initialise new SATInstance from specified CNF file
-    auto satInstance = new SATInstance<uint32_t>(new VariablesArray<uint32_t>(v_num), n_threads, cache_depth);
+    auto satInstance = new SATInstance<UINT_T>(new VariablesArray<UINT_T>(v_num), n_threads);
 
     // Logging read complete...
     auto stop = chrono::high_resolution_clock::now();
@@ -200,15 +188,9 @@ int main(int argc, char *argv[]){
     string log_end = "Log "; output(log_end.append(time_str) + ": Read complete; Duration: " +
                                     to_string(read_duration.count() / 1000.0) + "s\n\n", out_f, dump);
 
-    int cache_depth_per_thread = 0;
-    if(n_threads > 0){
-        cache_depth_per_thread = floor(cache_depth / n_threads);
-    }
-
     // Display the SAT instance meta-data for monitoring purposes
     output("------------ INFORMATION ------------\n\t\t\t# Variables\t= " + to_string(satInstance->n_vars) +
     "\n\t\t\t# Clauses\t= " + to_string(satInstance->n_clauses) +
-    "\nCache size per thread\t= " + to_string(cache_depth_per_thread) +
     "\n-------------------------------------\n\n", out_f, dump);
 
     if(dump){ // Save statistics to CSV file
