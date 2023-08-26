@@ -1,14 +1,10 @@
-make# Algorithmic Lovász Local Lemma (ALLL) Satisfiability Solver
-
----
+# Algorithmic Lovász Local Lemma (ALLL) Satisfiability Solver
 
 Xandru Mifsud (2022)
 
 Undergraduate CS APT 'Random Boolean Satisfiability' (University of Malta)
 
 Supervisor: Dr. Sandro Spina
-
----
 
 ## Description
 
@@ -17,8 +13,6 @@ with consultation of [2] and [3].
 
 __The code here forms the main code artefact forming part of the CS APT, as required for the awarding of the B.Sc.
 (Hons) in Computer Science and Mathematics.__
-
----
 
 ## Requirements
 
@@ -48,8 +42,6 @@ text file, along with any statistics gathered during the solve saved as a ```.cs
 The optional positional argument```-p``` specifies that parallelisation should be used wherever possible.
 
 By default, if ```n_threads``` is not specified, this will use all available (physical) threads on the system. Otherwise, ```n_threads``` are used for parallelisation.
-
----
 
 ## References
 
