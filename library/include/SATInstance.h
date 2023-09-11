@@ -75,6 +75,8 @@ class SATInstance{
             auto clauses = new vector<ClauseArray*>;
             auto generators = new vector<ClauseGenerator<T>*>;
             for (int t = 0; t < this->n_threads; t++) {
+                statistics->n_thread_resamples.push_back(0);
+
                 T offset = (T) t * t_n_clauses;
                 if (t == n_threads - 1) {
                     t_n_clauses = n_clauses - offset;
