@@ -15,6 +15,7 @@
 #include <omp.h>
 
 #include "RandomBoolGenerator.h"
+#include "ClauseGenerator.h"
 #include "VariablesArray.h"
 #include "Clause.h"
 
@@ -34,19 +35,19 @@ typedef struct Statistics{ // Structure for maintaining some simple statistics o
  *     sequential or parallel manner.
  * ii. Check whether a variable assignment satisfies the SAT instance.
  */
-template <typename tV>
+template <typename T>
 class SATInstance{
 
     public:
-        typedef vector<Clause<tV>*> ClauseArray;
+        using ClauseArray = typename Clause<T>::ClauseArray;
 
-        tV n_vars;
+        T n_vars;
         ull n_clauses = 0;
 
-        VariablesArray<tV>* var_arr;
+        VariablesArray<T>* var_arr;
 
         // Constructor for a SATInstance object
-        SATInstance(VariablesArray<tV>* var_arr, int n_threads){
+        SATInstance(VariablesArray<T>* var_arr, int n_threads) {
             this->var_arr = var_arr;                        // Encoded variables array
             this->n_threads = n_threads;                    // Number of threads for solving (if using parallel solver)
 
@@ -55,22 +56,111 @@ class SATInstance{
 
         // SAT solver based on the Algorithmic Lovasz Local Lemma of Moser and Tardos (2010); wrapper to either sequential
         // or parallel solver depending on whether 1 or more threads specified during instantiation.
-        Statistics* solve(vector<ClauseArray*>* clauses, bool stream){
-            for(auto c : *clauses) {    // Number of clauses in SAT instance
+        Statistics* solve (vector<ClauseArray*>* clauses) {
+            for (auto c : *clauses) {    // Number of clauses in SAT instance
                 n_clauses += c->size();
             }
 
-            return parallel_solve(clauses, stream);
+            return parallel_solve(clauses, false);
+        }
+
+        // Dynamic-generation SAT solver based on the Algorithmic Lovasz Local Lemma of Moser and Tardos (2010);
+        // wrapper to either sequential or parallel solver depending on whether 1 or more threads specified during instantiation.
+        Statistics* solve (Clause<T>* (*getEnumeratedClause)(T, unsigned short int), ull n_clauses, T batch_size) {
+            Statistics* statistics;
+            
+            this->n_clauses = n_clauses;
+            T t_n_clauses = (T) n_clauses / n_threads;
+
+            auto clauses = new vector<ClauseArray*>;
+            auto generators = new vector<ClauseGenerator<T>*>;
+            for (int t = 0; t < this->n_threads; t++) {
+                T offset = (T) t * t_n_clauses;
+                if (t == n_threads - 1) {
+                    t_n_clauses = n_clauses - offset;
+                }
+
+                generators->push_back(new ClauseGenerator<T>(getEnumeratedClause, t, t_n_clauses, offset, batch_size));
+            }
+            
+            bool solved = false;
+            while (!solved) {
+                solved = true;
+                bool finishedYielding = false;
+                
+                while (!finishedYielding) {
+                    #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, n_threads)
+                    for (int t = 0; t < n_threads; t++) {
+                        clauses->push_back(generators->at(t)->yieldRandomClauseBatch());
+                    }
+
+                    finishedYielding = true;
+                    for (int t = 0; t < n_threads; t++) {
+                        if (!generators->at(t)->has_finished_yielding()) {
+                            finishedYielding = false;
+                            break;
+                        }
+                    }
+
+                    statistics = parallel_solve(clauses, true);
+
+                    #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, n_threads)
+                    for (int t = 0; t < n_threads; t++) {
+                        // Memory management
+                        for (auto c: *clauses->at(t)) {
+                            c->literals->clear();
+                            delete c->literals;
+                            delete c;
+                        }
+
+                        clauses->at(t)->clear();
+                    }
+
+                    clauses->clear();
+                }
+                
+                finishedYielding = false;
+                while (!finishedYielding) {
+                    #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, n_threads)
+                    for (int t = 0; t < n_threads; t++) {
+                        clauses->push_back(generators->at(t)->yieldOrderedClauseBatch());
+                    }
+
+                    finishedYielding = true;
+                    for (int t = 0; t < n_threads; t++) {
+                        if (!generators->at(t)->has_finished_yielding()) {
+                            finishedYielding = false;
+                            break;
+                        }
+                    }
+
+                    solved = solved && verify_validity(clauses);
+
+                    #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, n_threads)
+                    for (int t = 0; t < n_threads; t++) {
+                        // Memory management
+                        for (auto c: *clauses->at(t)) {
+                            c->literals->clear();
+                            delete c->literals;
+                            delete c;
+                        }
+
+                        clauses->at(t)->clear();
+                    }
+                }
+            }
+            
+            return statistics;
         }
 
         // Convenience function for checking whether the assignments in var_arr represent a valid solution or not.
-        bool verify_validity(vector<ClauseArray*>* clauses) const{
+        bool verify_validity (vector<ClauseArray*>* clauses) const {
             volatile bool valid = true;
 
             #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, valid)
-            for(int t = 0; t < clauses->size(); t++){
-                for(auto clause = clauses->at(t)->begin(); clause != clauses->at(t)->end(); clause++){
-                    if(!valid){
+            for (int t = 0; t < clauses->size(); t++) {
+                for (auto clause = clauses->at(t)->begin(); clause != clauses->at(t)->end(); clause++) {
+                    if(!valid) {
                         continue;
                     }
 
@@ -95,7 +185,7 @@ class SATInstance{
          * and parallel divide-and-conquer generation of non-trivial independent sets of unsatisfied clauses; the sets
          * of independent unsatisfied clauses chosen by each thread is done in a pseudo-random manner.
          */
-        Statistics* parallel_solve(vector<ClauseArray*>* clauses, bool stream){
+        Statistics* parallel_solve (vector<ClauseArray*>* clauses, bool stream) {
             auto statistics = new Statistics;
 
             /* Each thread will be allocated a batch of clauses, divided dynamically amongst the threads. For each of
@@ -135,7 +225,7 @@ class SATInstance{
             vector<RBG<default_random_engine>*> rbg_ensemble;
 
             // Initialise ensembles of RBGs and clause_iterators...
-            for(int i = 0; i < n_threads; i++){
+            for (int i = 0; i < n_threads; i++) {
                 // Get the system default random generator with a random seed
                 auto engine = new default_random_engine(std::random_device{}());
 
@@ -149,33 +239,33 @@ class SATInstance{
             auto unsat_clauses = new vector<ClauseArray*>;
 
             // Initialise an empty vector U_t for the unsatisfied clauses found by each thread
-            for(int t = 0; t < n_threads; t++){
+            for (int t = 0; t < n_threads; t++) {
                 unsat_clauses->push_back(new ClauseArray());
             }
 
             omp_set_num_threads(n_threads);
-            while(true){ // While there exists a clause c which is not satisfied...
+            while (true) { // While there exists a clause c which is not satisfied...
                 statistics->n_iterations += 1; // Update statistics
 
                 // Split clauses in n_threads batches {C_j}, in parallel through dynamic allocation
                 #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, unsat_clauses)
-                for(int t = 0; t < n_threads; t++){
-                    for(auto clause = clauses->at(t)->begin(); clause != clauses->at(t)->end(); ++clause){
-                        if((*clause)->is_not_satisfied(var_arr->vars)){
+                for (int t = 0; t < n_threads; t++) {
+                    for (auto clause = clauses->at(t)->begin(); clause != clauses->at(t)->end(); ++clause) {
+                        if((*clause)->is_not_satisfied(var_arr->vars)) {
                             unsat_clauses->at(t)->push_back(*clause);
                         }
                     }
                 }
 
                 bool solved = true;
-                for(auto unsatClauses : *unsat_clauses){
-                    if(!unsatClauses->empty()){
+                for (auto unsatClauses : *unsat_clauses) {
+                    if(!unsatClauses->empty()) {
                         solved = false;
                         break;
                     }
                 }
 
-                if(solved){
+                if (solved) {
                     // Memory management
                     unsat_clauses->clear();
                     delete unsat_clauses;
@@ -185,26 +275,27 @@ class SATInstance{
 
                 // Initialise an empty vector I_t for the MIS of unsatisfied clauses associated with U_t of each thread
                 auto indep_unsat_clauses = new vector<ClauseArray*>;
-                for(int t = 0; t < n_threads; t++){
+                for (int t = 0; t < n_threads; t++) {
                     indep_unsat_clauses->push_back(new ClauseArray);
                 }
 
                 // Find a subset MIS I_t in each set of unsatisfied clauses U_t, in parallel (statically, one for each thread);
                 // As described earlier, we visit the clauses in each U_t in a pseudo-random order (effectively shuffling)
                 #pragma omp parallel for schedule(static, 1) default(none) shared(unsat_clauses, indep_unsat_clauses)
-                for(int t = 0; t < n_threads; t++){
+                for (int t = 0; t < n_threads; t++) {
 
-                    for(auto clause = unsat_clauses->at(t)->begin();
-                        clause != unsat_clauses->at(t)->end(); ++clause){ // Visit each clause in U_t; note that the iterator i is not used
-                        // as an index; rather the LCG corresponding to the thread is. Since the LCG has period chunk_size,
+                    for (auto clause = unsat_clauses->at(t)->begin();
+                        clause != unsat_clauses->at(t)->end(); ++clause) { 
+                        // Visit each clause in U_t; note that the iterator i is not used as an index; 
+                        // rather the LCG corresponding to the thread is. Since the LCG has period chunk_size,
                         // each time we update it with every iteration i, we ensure that no clause is visited twice. Hence,
                         // since i has a range from 0 to chunk_size - 1, we visit all the clauses in U_t in a non-linear
                         // fashion.
 
                         bool independent = true; // If current clause in U_t is dependent on some clause in the current
                         // state of the independent set I_t, then change flag to false.
-                        for(auto& c: *(indep_unsat_clauses->at(t))){ // Check if dependent on any clause in I_t...
-                            if(dependent_clauses((*clause), c)){
+                        for (auto& c: *(indep_unsat_clauses->at(t))) { // Check if dependent on any clause in I_t...
+                            if (dependent_clauses((*clause), c)) {
 
                                 // If dependent, update independent flag to false and break (no need to continue checking -
                                 // the current clause in U_t will not be added to the independent set)
@@ -214,7 +305,7 @@ class SATInstance{
                             }
                         }
 
-                        if(independent){ // If independent, then add to independent set I_t
+                        if(independent) { // If independent, then add to independent set I_t
                             (*indep_unsat_clauses->at(t)).push_back(*clause);
                         }
                     } // At the end, I_t will be a MIS since all clauses in U_t have been exhausted
@@ -231,11 +322,11 @@ class SATInstance{
 
                 // In parallel and dynamically, re-sample the variables appearing in the clauses of the MIS constructed
                 #pragma omp parallel for schedule(dynamic) default(none) shared(max_indep_unsat_clauses, rbg_ensemble, statistics)
-                for(ull c = 0; c < max_indep_unsat_clauses->size(); c++){
+                for (ull c = 0; c < max_indep_unsat_clauses->size(); c++) {
                     int t_id = omp_get_thread_num(); // Get thread identifier
 
                     // Re--sample every variable in the clause using the RBG associated with the thread t_id
-                    for(auto& l : *(max_indep_unsat_clauses->at(c))->literals){
+                    for (auto& l : *(max_indep_unsat_clauses->at(c))->literals) {
                         (var_arr->vars)[l >> 1] = (rbg_ensemble[t_id])->sample();
                     }
 
@@ -246,7 +337,7 @@ class SATInstance{
                 max_indep_unsat_clauses->clear();
                 delete max_indep_unsat_clauses; // Memory management
 
-                if(stream){
+                if (stream) {
                     unsat_clauses->clear();
                     delete unsat_clauses;
 
@@ -254,7 +345,7 @@ class SATInstance{
                 }
             }
 
-            for(int t = 0; t < n_threads; t++){
+            for (int t = 0; t < n_threads; t++) {
                 statistics->n_resamples += (statistics->n_thread_resamples).at(t); // Update statistics
             }
             statistics->avg_mis_size = (ull) (statistics->avg_mis_size / statistics->n_iterations); // Update statistics
@@ -268,20 +359,20 @@ class SATInstance{
 
         // Given two Clause instances, establishes whether the two are dependent or not. The criteria of dependency is
         // having one or more variables in common between the literals of the two clauses.
-        bool dependent_clauses(Clause<tV>* c1, Clause<tV>* c2){
+        bool dependent_clauses (Clause<T>* c1, Clause<T>* c2) {
             // For every pair (x, y) of literals between the two clauses...
             bool dependent = false;
-            for(auto& l1 : *c1->literals){
-                for(auto& l2 : *c2->literals){
+            for (auto& l1 : *c1->literals) {
+                for (auto& l2 : *c2->literals) {
                     // If the variable associated with x is equal to the variable associated with y, then the clauses are
                     // dependent and hence we return true (no need to check further - we require AT LEAST one).
-                    if((l1 >> 1) == (l2 >> 1)){
+                    if ((l1 >> 1) == (l2 >> 1)) {
                         dependent = true;
                         break;
                     }
                 }
 
-                if(dependent){
+                if(dependent) {
                     break;
                 }
             }
@@ -291,7 +382,7 @@ class SATInstance{
         }
 
         // Utility function for constructing a maximally independent set (MIS) from two other such sets
-        ClauseArray* greedy_mis_join(ClauseArray* set1, ClauseArray* set2){
+        ClauseArray* greedy_mis_join(ClauseArray* set1, ClauseArray* set2) {
             auto result = new ClauseArray; // The resulting MIS from joining set1 and set2
 
             /* We begin by iterating across all the elements in set1 and checking it against every element in set2. If
@@ -300,13 +391,12 @@ class SATInstance{
              * assumed to be a MIS).
              */
             auto idx1 = set1->begin();
-            while(idx1 != set1->end()){ // Consider an element x in set1...
+            while (idx1 != set1->end()) { // Consider an element x in set1...
                 auto idx2 = set2->begin();
-                while(idx2 != set2->end()){ // for every element y in set2
-                    if(dependent_clauses(*idx1, *idx2)){ // if y and x are dependent, remove y from set2
+                while (idx2 != set2->end()) { // for every element y in set2
+                    if (dependent_clauses(*idx1, *idx2)) { // if y and x are dependent, remove y from set2
                         idx2 = set2->erase(idx2);
-                    }
-                    else{ // else maintain y in set2 and check the next element y' (if any) in set2
+                    } else { // else maintain y in set2 and check the next element y' (if any) in set2
                         ++idx2;
                     }
                 }
@@ -320,7 +410,7 @@ class SATInstance{
              * resulting set and the augmented set2).
              */
             auto idx2 = set2->begin();
-            while(idx2 != set2->end()){ // Add every element in the augmented set2 to the resulting MIS
+            while (idx2 != set2->end()) { // Add every element in the augmented set2 to the resulting MIS
                 result->push_back(*idx2);
                 idx2 = set2->erase(idx2); // memory management
             }
@@ -329,15 +419,14 @@ class SATInstance{
         }
 
         // Utility function for recursively and in parallel joining k disjoint maximally independent sets into a single one
-        ClauseArray* greedy_parallel_mis_join(vector<ClauseArray*>* sets){
+        ClauseArray* greedy_parallel_mis_join(vector<ClauseArray*>* sets) {
             // BASE CASE
-            if(sets->size() == 1){ // If only a single MIS is passed as input, then simply return it
+            if (sets->size() == 1) { // If only a single MIS is passed as input, then simply return it
                 auto ret_set = sets->at(0);
                 delete sets;
 
                 return ret_set;
-            }
-            else{ // RECURSIVE CASE
+            } else { // RECURSIVE CASE
                 /* The join works by pairing the independent sets passed as input, and (in parallel) each pair is joined
                  * into a single MIS using the greedy_mis_join() algorithm. Note that in the case of an odd number of
                  * sets, one is not paired.
@@ -347,17 +436,17 @@ class SATInstance{
                  */
 
                 auto joined_sets = new vector<ClauseArray*>; // Resulting MIS from pair--wise joins
-                int offset = 0; // Index offset from which to start populating joined_sets (if odd then index 0 is
+                int offset = 0; // Index n_yielded_clauses from which to start populating joined_sets (if odd then index 0 is
                 // populated with the largest input MIS, and the remaining are paired off and joined_sets is populated
-                // with the joined sets from index 1 onwards ie. offset is set to 1.
+                // with the joined sets from index 1 onwards ie. n_yielded_clauses is set to 1.
 
-                if(sets->size() % 2){ // If odd number of initial sets...
-                    offset = 1; // Set offset to 1
+                if (sets->size() % 2) { // If odd number of initial sets...
+                    offset = 1; // Set n_yielded_clauses to 1
 
                     // Find the input MIS with the largest size
                     auto max_idx = sets->begin();
-                    for(auto idx = sets->begin(); idx != sets->end(); ++idx){
-                        if((*max_idx)->size() < (*idx)->size()){
+                    for (auto idx = sets->begin(); idx != sets->end(); ++idx) {
+                        if ((*max_idx)->size() < (*idx)->size()) {
                             max_idx = idx;
                         }
                     }
@@ -367,19 +456,18 @@ class SATInstance{
                 } // The remaining input MISs are paired off and joined into a single MIS
 
                 auto n_pairs = (int) (sets->size() / 2); // Number of sets resulting from pairing
-                for(int t = 0; t < n_pairs; t++){ // Initialisation
+                for (int t = 0; t < n_pairs; t++) { // Initialisation
                     joined_sets->push_back(nullptr);
                 }
 
                 // In parallel join each pair of input MISs using the greedy_mis_join() algorithm (one for each thread;
                 // number of pairs does not exceed n_threads)
                 #pragma omp parallel for schedule(static, 1) default(none) shared(n_pairs, offset, sets, joined_sets)
-                for(int t = 0; t < n_pairs; t++){
+                for (int t = 0; t < n_pairs; t++) {
                     // Join pairs greedily into a single independent set...
-                    if(sets->at((2 * t) + 1)->size() < sets->at(2 * t)->size()) {
+                    if (sets->at((2 * t) + 1)->size() < sets->at(2 * t)->size()) {
                         joined_sets->at(offset + t) = greedy_mis_join(sets->at(2 * t), sets->at((2 * t) + 1));
-                    }
-                    else{
+                    } else {
                         joined_sets->at(offset + t) = greedy_mis_join(sets->at((2 * t) + 1), sets->at(2 * t));
                     }
 

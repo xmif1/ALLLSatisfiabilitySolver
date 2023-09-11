@@ -20,7 +20,7 @@ class VariablesArray{
         tV n_vars;
         bool* vars;
 
-        explicit VariablesArray(tV n_vars){
+        explicit VariablesArray (tV n_vars) {
             default_random_engine engine(std::random_device{}()); // Get the system default random generator with a random seed
             RBG<default_random_engine> rbg(engine); // Initialise an instance of a random boolean generator...
 
@@ -28,7 +28,7 @@ class VariablesArray{
             vars = new bool[n_vars];
 
             // Populate each entry in the vars array with a randomly generated boolean value...
-            for(tV i = 0; i < n_vars; i++){
+            for (tV i = 0; i < n_vars; i++) {
                 vars[i] = rbg.sample();
             }
         }

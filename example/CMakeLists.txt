@@ -16,4 +16,4 @@ add_executable(${PROJECT_NAME}
                cnf_io/cnf_io.h)
 target_link_libraries(${PROJECT_NAME} Boost::program_options ALLLSatisfiabilitySolver)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Ofast -DNDEBUG") # to specify compiler optimisations add -O3 -DNDEBUG
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Ofast -DNDEBUG") # to specify compiler optimisations add -Ofast -DNDEBUG

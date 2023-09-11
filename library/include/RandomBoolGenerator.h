@@ -9,6 +9,8 @@
 
 #define UNLIKELY(x) __builtin_expect((x), 0)
 
+#include "random"
+
 typedef unsigned long long ull;
 
 /* Based on the implementation of Martin Ankerl, given at https://martin.ankerl.com/2018/12/08/fast-random-bool/.
@@ -26,13 +28,13 @@ typedef unsigned long long ull;
 template <typename E>
 class RBG{
     public:
-        explicit RBG(E& engine){
+        explicit RBG (E& engine) {
             this->engine = engine;
         }
 
-        bool sample(){
+        bool sample() {
             // In case m_rand is equal to initial seed, re-sample (inefficiently) using uniform_int_distribution.
-            if(UNLIKELY(1 == m_rand)){
+            if (UNLIKELY(1 == m_rand)) {
                 m_rand = std::uniform_int_distribution<ull>{}(engine) | s_mask_left1;
             }
 
