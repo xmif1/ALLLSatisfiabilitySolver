@@ -215,7 +215,7 @@ int main(int argc, char *argv[]){
     log_start = "Log "; output(log_start.append(time_str) + ": " + solve_info + "\n", out_f, dump);
     start = chrono::high_resolution_clock::now();
 
-    Statistics* statistics = satInstance->solve(clauses, false); // Solving SAT instance and maintaining solve statistics
+    Statistics* statistics = satInstance->solve(clauses); // Solving SAT instance and maintaining solve statistics
 
     // Logging solve completion...
     stop = chrono::high_resolution_clock::now();

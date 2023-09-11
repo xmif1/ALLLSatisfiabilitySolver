@@ -67,7 +67,7 @@ class SATInstance{
         // Dynamic-generation SAT solver based on the Algorithmic Lovasz Local Lemma of Moser and Tardos (2010);
         // wrapper to either sequential or parallel solver depending on whether 1 or more threads specified during instantiation.
         Statistics* solve (Clause<T>* (*getEnumeratedClause)(T, unsigned short int), ull n_clauses, T batch_size) {
-            Statistics* statistics;
+            auto statistics = new Statistics;
             
             this->n_clauses = n_clauses;
             T t_n_clauses = (T) n_clauses / n_threads;
@@ -86,6 +86,8 @@ class SATInstance{
             bool solved = false;
             while (!solved) {
                 solved = true;
+                statistics->n_iterations += 1;
+
                 bool finishedYielding = false;
                 
                 while (!finishedYielding) {
@@ -102,7 +104,13 @@ class SATInstance{
                         }
                     }
 
-                    statistics = parallel_solve(clauses, true);
+                    auto result = parallel_solve(clauses, true);
+
+                    statistics->avg_mis_size += result->avg_mis_size;
+                    statistics->n_resamples += result->n_resamples;
+                    for (int t = 0; t < n_threads; t++) {
+                        statistics->n_thread_resamples.at(t) += result->n_thread_resamples.at(t);
+                    }
 
                     #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, n_threads)
                     for (int t = 0; t < n_threads; t++) {
@@ -149,7 +157,9 @@ class SATInstance{
                     }
                 }
             }
-            
+
+            statistics->avg_mis_size /= statistics->n_iterations;
+
             return statistics;
         }
 
