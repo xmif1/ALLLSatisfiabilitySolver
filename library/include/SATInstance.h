@@ -157,6 +157,8 @@ class SATInstance{
 
                         clauses->at(t)->clear();
                     }
+
+                    clauses->clear();
                 }
             }
 
@@ -248,16 +250,16 @@ class SATInstance{
                 statistics->n_thread_resamples.push_back(0);
             }
 
-            auto unsat_clauses = new vector<ClauseArray*>;
-
-            // Initialise an empty vector U_t for the unsatisfied clauses found by each thread
-            for (int t = 0; t < n_threads; t++) {
-                unsat_clauses->push_back(new ClauseArray());
-            }
-
             omp_set_num_threads(n_threads);
             while (true) { // While there exists a clause c which is not satisfied...
                 statistics->n_iterations += 1; // Update statistics
+
+                auto unsat_clauses = new vector<ClauseArray*>;
+
+                // Initialise an empty vector U_t for the unsatisfied clauses found by each thread
+                for (int t = 0; t < n_threads; t++) {
+                    unsat_clauses->push_back(new ClauseArray());
+                }
 
                 // Split clauses in n_threads batches {C_j}, in parallel through dynamic allocation
                 #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, unsat_clauses)
@@ -285,50 +287,8 @@ class SATInstance{
                     break;
                 }
 
-                // Initialise an empty vector I_t for the MIS of unsatisfied clauses associated with U_t of each thread
-                auto indep_unsat_clauses = new vector<ClauseArray*>;
-                for (int t = 0; t < n_threads; t++) {
-                    indep_unsat_clauses->push_back(new ClauseArray);
-                }
-
-                // Find a subset MIS I_t in each set of unsatisfied clauses U_t, in parallel (statically, one for each thread);
-                // As described earlier, we visit the clauses in each U_t in a pseudo-random order (effectively shuffling)
-                #pragma omp parallel for schedule(static, 1) default(none) shared(unsat_clauses, indep_unsat_clauses)
-                for (int t = 0; t < n_threads; t++) {
-
-                    for (auto clause = unsat_clauses->at(t)->begin();
-                        clause != unsat_clauses->at(t)->end(); ++clause) { 
-                        // Visit each clause in U_t; note that the iterator i is not used as an index; 
-                        // rather the LCG corresponding to the thread is. Since the LCG has period chunk_size,
-                        // each time we update it with every iteration i, we ensure that no clause is visited twice. Hence,
-                        // since i has a range from 0 to chunk_size - 1, we visit all the clauses in U_t in a non-linear
-                        // fashion.
-
-                        bool independent = true; // If current clause in U_t is dependent on some clause in the current
-                        // state of the independent set I_t, then change flag to false.
-                        for (auto& c: *(indep_unsat_clauses->at(t))) { // Check if dependent on any clause in I_t...
-                            if (dependent_clauses((*clause), c)) {
-
-                                // If dependent, update independent flag to false and break (no need to continue checking -
-                                // the current clause in U_t will not be added to the independent set)
-                                independent = false;
-
-                                break;
-                            }
-                        }
-
-                        if(independent) { // If independent, then add to independent set I_t
-                            (*indep_unsat_clauses->at(t)).push_back(*clause);
-                        }
-                    } // At the end, I_t will be a MIS since all clauses in U_t have been exhausted
-                }
-
                 // Join the n_thread MISs {I_t} into a single MIS (through the greedy_parallel_mis_join() function)
-                auto max_indep_unsat_clauses = greedy_parallel_mis_join(indep_unsat_clauses);
-
-                for (int t = 0; t < n_threads; t++) {
-                    unsat_clauses->at(t)->clear();
-                }
+                auto max_indep_unsat_clauses = get_mis_parallel(unsat_clauses);
 
                 statistics->avg_mis_size += max_indep_unsat_clauses->size(); // Update statistics
 
@@ -350,9 +310,6 @@ class SATInstance{
                 delete max_indep_unsat_clauses; // Memory management
 
                 if (stream) {
-                    unsat_clauses->clear();
-                    delete unsat_clauses;
-
                     break;
                 }
             }
@@ -360,6 +317,7 @@ class SATInstance{
             for (int t = 0; t < n_threads; t++) {
                 statistics->n_resamples += (statistics->n_thread_resamples).at(t); // Update statistics
             }
+
             statistics->avg_mis_size = (ull) (statistics->avg_mis_size / statistics->n_iterations); // Update statistics
 
             return statistics;
@@ -393,109 +351,40 @@ class SATInstance{
             return dependent;
         }
 
-        // Utility function for constructing a maximally independent set (MIS) from two other such sets
-        ClauseArray* greedy_mis_join(ClauseArray* set1, ClauseArray* set2) {
-            auto result = new ClauseArray; // The resulting MIS from joining set1 and set2
+        ClauseArray* get_mis_parallel(vector<ClauseArray*>* sets) {
+            auto mis = new ClauseArray();
+            int t = 0;
 
-            /* We begin by iterating across all the elements in set1 and checking it against every element in set2. If
-             * for some element x in set1 there is an element y in set2 such that x and y are independent, then we delete
-             * y from set2 (on the fly). Hence, the resulting MIS will always contain set1 as a subset (where set1 is
-             * assumed to be a MIS).
-             */
-            auto idx1 = set1->begin();
-            while (idx1 != set1->end()) { // Consider an element x in set1...
-                auto idx2 = set2->begin();
-                while (idx2 != set2->end()) { // for every element y in set2
-                    if (dependent_clauses(*idx1, *idx2)) { // if y and x are dependent, remove y from set2
-                        idx2 = set2->erase(idx2);
-                    } else { // else maintain y in set2 and check the next element y' (if any) in set2
-                        ++idx2;
-                    }
+            while (!sets->empty()) {
+                t = (t + 1) % sets->size();
+                if (sets->at(t)->empty()) {
+                    sets->at(t)->clear();
+                    delete sets->at(t);
+
+                    sets->erase(sets->begin() + t);
+                    continue;
                 }
 
-                result->push_back(*idx1); // In any case, add x from set1 to the resulting MIS
-                idx1 = set1->erase(idx1); // Erase x from set1 (simply for memory management)
-            }
+                auto clause = sets->at(t)->at(0);
+                mis->push_back(clause);
 
-            /* As a result, all the remaining elements in set2 are independent from all the elements in set1, i.e. from
-             * all the elements in the resulting MIS thus far. Hence we simply take the union of the two sets (the current
-             * resulting set and the augmented set2).
-             */
-            auto idx2 = set2->begin();
-            while (idx2 != set2->end()) { // Add every element in the augmented set2 to the resulting MIS
-                result->push_back(*idx2);
-                idx2 = set2->erase(idx2); // memory management
-            }
-
-            return result;
-        }
-
-        // Utility function for recursively and in parallel joining k disjoint maximally independent sets into a single one
-        ClauseArray* greedy_parallel_mis_join(vector<ClauseArray*>* sets) {
-            // BASE CASE
-            if (sets->size() == 1) { // If only a single MIS is passed as input, then simply return it
-                auto ret_set = sets->at(0);
-                delete sets;
-
-                return ret_set;
-            } else { // RECURSIVE CASE
-                /* The join works by pairing the independent sets passed as input, and (in parallel) each pair is joined
-                 * into a single MIS using the greedy_mis_join() algorithm. Note that in the case of an odd number of
-                 * sets, one is not paired.
-                 *
-                 * The greedy_parallel_mis_join is then called once again on the resulting sets, until the base case is
-                 * satisfied.
-                 */
-
-                auto joined_sets = new vector<ClauseArray*>; // Resulting MIS from pair--wise joins
-                int offset = 0; // Index n_yielded_clauses from which to start populating joined_sets (if odd then index 0 is
-                // populated with the largest input MIS, and the remaining are paired off and joined_sets is populated
-                // with the joined sets from index 1 onwards ie. n_yielded_clauses is set to 1.
-
-                if (sets->size() % 2) { // If odd number of initial sets...
-                    offset = 1; // Set n_yielded_clauses to 1
-
-                    // Find the input MIS with the largest size
-                    auto max_idx = sets->begin();
-                    for (auto idx = sets->begin(); idx != sets->end(); ++idx) {
-                        if ((*max_idx)->size() < (*idx)->size()) {
-                            max_idx = idx;
+                #pragma omp parallel for schedule(static, 1) default(none) shared(sets, clause)
+                for (int k = 0; k < sets->size(); k++) {
+                    auto idx = sets->at(k)->begin();
+                    while (idx != sets->at(k)->end()) { // for every element y in set
+                        if (dependent_clauses(clause, *idx)) { // if y and x are dependent, remove y from set2
+                            idx = sets->at(k)->erase(idx);
+                        } else { // else maintain y in set and check the next element y' (if any) in set2
+                            ++idx;
                         }
                     }
-
-                    joined_sets->push_back(*max_idx); // Append largest MIS to joined_sets
-                    sets->erase(max_idx); // Memory management
-                } // The remaining input MISs are paired off and joined into a single MIS
-
-                auto n_pairs = (int) (sets->size() / 2); // Number of sets resulting from pairing
-                for (int t = 0; t < n_pairs; t++) { // Initialisation
-                    joined_sets->push_back(nullptr);
                 }
-
-                // In parallel join each pair of input MISs using the greedy_mis_join() algorithm (one for each thread;
-                // number of pairs does not exceed n_threads)
-                #pragma omp parallel for schedule(static, 1) default(none) shared(n_pairs, offset, sets, joined_sets)
-                for (int t = 0; t < n_pairs; t++) {
-                    // Join pairs greedily into a single independent set...
-                    if (sets->at((2 * t) + 1)->size() < sets->at(2 * t)->size()) {
-                        joined_sets->at(offset + t) = greedy_mis_join(sets->at(2 * t), sets->at((2 * t) + 1));
-                    } else {
-                        joined_sets->at(offset + t) = greedy_mis_join(sets->at((2 * t) + 1), sets->at(2 * t));
-                    }
-
-                    // Memory management (we only require the resulting joined set from two initial sets)
-                    sets->at(2*t)->clear();
-                    delete sets->at(2*t);
-
-                    sets->at((2*t) + 1)->clear();
-                    delete sets->at((2*t) + 1);
-                }
-
-                sets->clear();
-                delete sets; // Memory management
-
-                return greedy_parallel_mis_join(joined_sets); // Recursive join of the resulting MISs
             }
+
+            sets->clear();
+            delete sets;
+
+            return mis;
         }
 };
 
