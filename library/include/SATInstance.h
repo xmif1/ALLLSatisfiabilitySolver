@@ -93,9 +93,13 @@ class SATInstance{
                 bool finishedYielding = false;
                 
                 while (!finishedYielding) {
+                    for (int t = 0; t < n_threads; t++) {
+                        clauses->push_back(nullptr);
+                    }
+
                     #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, generators, n_threads)
                     for (int t = 0; t < n_threads; t++) {
-                        clauses->push_back(generators->at(t)->yieldRandomClauseBatch());
+                        clauses->at(t) = generators->at(t)->yieldRandomClauseBatch();
                     }
 
                     finishedYielding = true;
@@ -131,9 +135,13 @@ class SATInstance{
                 
                 finishedYielding = false;
                 while (!finishedYielding) {
+                    for (int t = 0; t < n_threads; t++) {
+                        clauses->push_back(nullptr);
+                    }
+
                     #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, generators, n_threads)
                     for (int t = 0; t < n_threads; t++) {
-                        clauses->push_back(generators->at(t)->yieldOrderedClauseBatch());
+                        clauses->at(t) = generators->at(t)->yieldOrderedClauseBatch();
                     }
 
                     finishedYielding = true;
