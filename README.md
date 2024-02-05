@@ -20,16 +20,25 @@ This program is intended to run on 64-bit Linux and macOS (Intel and Apple Silic
 
 For installation, ```cmake``` version 3.17+ is required, as well as ```libomp```.
 
-## Installation Instructions
+## Library Installation Instructions
 
-Clone the repository, and ```cd``` into the project directory. Then run:
+Clone the repository, and ```cd``` into the 'library' directory at the project root. Then run:
+
+1. ```mkdir ./build```
+2. ```cd ./build```
+3. ```cmake ..```
+4. ```sudo make install```
+
+## Minimal Working Example Installation Instructions
+
+After installing the library, ```cd``` into the 'example' directory at the project root. Then run:
 
 1. ```mkdir ./build```
 2. ```cd ./build```
 3. ```cmake ..```
 4. ```make```
 
-## Execution Instructions
+## Minimal Working Example Execution Instructions
 
 Simply ```cd``` into the directory containing the compiled executable, and run 
 ```./ALLLSatisfiabilitySolver [-o] [-p [n_threads]] <path/to/sat_instance.cnf>```. 
