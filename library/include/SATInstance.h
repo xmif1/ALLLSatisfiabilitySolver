@@ -274,7 +274,7 @@ class SATInstance{
                 }
 
                 // Join the n_thread MISs {I_t} into a single MIS (through the greedy_parallel_mis_join() function)
-                get_mis_parallel(unsat_clauses, mis, stream);
+                populate_mis_parallel(unsat_clauses, mis, stream);
                 statistics->avg_mis_size += mis->size(); // Update statistics
 
                 if (resample) {
@@ -375,7 +375,7 @@ class SATInstance{
             return dependent;
         }
 
-        void get_mis_parallel(vector<ClauseArray*>* sets, ClauseArray* mis, bool memory_manage) {
+        void populate_mis_parallel(vector<ClauseArray*>* sets, ClauseArray* mis, bool memory_manage) {
             if (!mis->empty()) { // Filter out clauses which are dependent on current MIS
                 for (auto clause : *mis) {
                     #pragma omp parallel for schedule(static, 1) default(none) shared(sets, clause, memory_manage)
@@ -435,8 +435,6 @@ class SATInstance{
 
             sets->clear();
             delete sets;
-
-            return mis;
         }
 };
 
