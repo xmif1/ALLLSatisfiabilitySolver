@@ -7,6 +7,7 @@
 
 #include <unordered_map>
 #include <iostream>
+#include <fstream>
 #include <utility>
 #include <vector>
 #include <random>
@@ -61,7 +62,7 @@ class SATInstance{
                 n_clauses += c->size();
             }
 
-            return parallel_solve(clauses, false);
+            return parallel_solve(clauses, new ClauseArray(),false, true);
         }
 
         // Dynamic-generation SAT solver based on the Algorithmic Lovasz Local Lemma of Moser and Tardos (2010);
@@ -72,7 +73,6 @@ class SATInstance{
             this->n_clauses = n_clauses;
             T t_n_clauses = (T) n_clauses / n_threads;
 
-            auto clauses = new vector<ClauseArray*>;
             auto generators = new vector<ClauseGenerator<T>*>;
             for (int t = 0; t < this->n_threads; t++) {
                 statistics->n_thread_resamples.push_back(0);
@@ -84,22 +84,27 @@ class SATInstance{
 
                 generators->push_back(new ClauseGenerator<T>(getEnumeratedClause, t, t_n_clauses, offset, batch_size));
             }
-            
-            bool solved = false;
+
+            volatile bool solved = false;
             while (!solved) {
                 solved = true;
                 statistics->n_iterations += 1;
 
+                auto mis = new ClauseArray();
+
                 bool finishedYielding = false;
-                
+                cout << "New solve iteration..." << endl;
+
                 while (!finishedYielding) {
+                    auto clauses = new vector<ClauseArray*>;
+
                     for (int t = 0; t < n_threads; t++) {
                         clauses->push_back(nullptr);
                     }
 
-                    #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, generators, n_threads)
+                    #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, generators, var_arr, n_threads)
                     for (int t = 0; t < n_threads; t++) {
-                        clauses->at(t) = generators->at(t)->yieldRandomClauseBatch();
+                        clauses->at(t) = generators->at(t)->yieldRandomUNSATClauseBatch(var_arr->vars);
                     }
 
                     finishedYielding = true;
@@ -110,63 +115,28 @@ class SATInstance{
                         }
                     }
 
-                    auto result = parallel_solve(clauses, true);
+                    auto result = parallel_solve(clauses, mis, true, finishedYielding);
 
                     statistics->avg_mis_size += result->avg_mis_size;
                     statistics->n_resamples += result->n_resamples;
                     for (int t = 0; t < n_threads; t++) {
                         statistics->n_thread_resamples.at(t) += result->n_thread_resamples.at(t);
                     }
-
-                    #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, n_threads)
-                    for (int t = 0; t < n_threads; t++) {
-                        // Memory management
-                        for (auto c: *clauses->at(t)) {
-                            c->literals->clear();
-                            delete c->literals;
-                            delete c;
-                        }
-
-                        clauses->at(t)->clear();
-                    }
-
-                    clauses->clear();
                 }
-                
-                finishedYielding = false;
-                while (!finishedYielding) {
-                    for (int t = 0; t < n_threads; t++) {
-                        clauses->push_back(nullptr);
-                    }
 
-                    #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, generators, n_threads)
-                    for (int t = 0; t < n_threads; t++) {
-                        clauses->at(t) = generators->at(t)->yieldOrderedClauseBatch();
-                    }
+                delete mis;
 
-                    finishedYielding = true;
-                    for (int t = 0; t < n_threads; t++) {
-                        if (!generators->at(t)->has_finished_yielding()) {
-                            finishedYielding = false;
-                            break;
-                        }
-                    }
-
-                    solved = solved && verify_validity(clauses);
-
-                    #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, n_threads)
-                    for (int t = 0; t < n_threads; t++) {
-                        // Memory management
-                        for (auto c: *clauses->at(t)) {
-                            c->literals->clear();
-                            delete c->literals;
-                            delete c;
+                #pragma omp parallel for schedule(static, 1) default(none) shared(generators, solved, n_threads, var_arr)
+                for (int t = 0; t < n_threads; t++) {
+                    for (int k = 0; k < generators->at(t)->n_clauses; k++) {
+                        if (!solved) {
+                            continue;
                         }
 
-                        clauses->at(t)->clear();
+                        if(generators->at(t)->yieldNextClause()->is_not_satisfied(var_arr->vars)) {
+                            solved = false;
+                        }
                     }
-
-                    clauses->clear();
                 }
             }
 
@@ -179,7 +149,7 @@ class SATInstance{
         bool verify_validity (vector<ClauseArray*>* clauses) const {
             volatile bool valid = true;
 
-            #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, valid)
+            #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, valid, var_arr)
             for (int t = 0; t < clauses->size(); t++) {
                 for (auto clause = clauses->at(t)->begin(); clause != clauses->at(t)->end(); clause++) {
                     if(!valid) {
@@ -195,6 +165,30 @@ class SATInstance{
             return valid;
         }
 
+        void writeDIMACS(Clause<T>* (*getEnumeratedClause)(T, unsigned short int), ofstream* out_f) {
+            auto generator = new ClauseGenerator<T>(getEnumeratedClause, 0, n_clauses, 0, n_clauses);
+
+            *out_f << "p cnf " << n_vars << " " << n_clauses << endl;
+
+            for (ull i = 0; i < n_clauses; i++){
+                auto clause = generator->yieldNextClause();
+
+                for(auto& l : *(clause->literals)) {
+                    if (l & 1) {
+                        *out_f << " " << to_string(-((intmax_t) (l >> 1)) - 1);
+                    } else {
+                        *out_f << " " << to_string((l >> 1) + 1);
+                    }
+                }
+
+                *out_f << " 0" << endl;
+
+                clause->literals->clear();
+                delete clause->literals;
+                delete clause;
+            }
+        }
+
     private:
         // Prime number for LCG over the clauses array (which should be reasonably large enough...we hope...)
         int n_threads{};
@@ -207,7 +201,7 @@ class SATInstance{
          * and parallel divide-and-conquer generation of non-trivial independent sets of unsatisfied clauses; the sets
          * of independent unsatisfied clauses chosen by each thread is done in a pseudo-random manner.
          */
-        Statistics* parallel_solve (vector<ClauseArray*>* clauses, bool stream) {
+        Statistics* parallel_solve (vector<ClauseArray*>* clauses, ClauseArray* mis, bool stream, bool resample) {
             auto statistics = new Statistics;
 
             /* Each thread will be allocated a batch of clauses, divided dynamically amongst the threads. For each of
@@ -244,78 +238,59 @@ class SATInstance{
              *          5. For each clause C in S, in parallel resample the variables in C using an RBG.
              */
 
-            vector<RBG<default_random_engine>*> rbg_ensemble;
-
-            // Initialise ensembles of RBGs and clause_iterators...
+            // Initialise statistics...
             for (int i = 0; i < n_threads; i++) {
-                // Get the system default random generator with a random seed
-                auto engine = new default_random_engine(std::random_device{}());
-
-                // Initialise an instance of a random boolean generator
-                rbg_ensemble.push_back(new RBG<default_random_engine>(*engine));
-
-                // Initialise statistics
                 statistics->n_thread_resamples.push_back(0);
             }
 
             omp_set_num_threads(n_threads);
             while (true) { // While there exists a clause c which is not satisfied...
                 statistics->n_iterations += 1; // Update statistics
+                vector<ClauseArray*>* unsat_clauses;
 
-                auto unsat_clauses = new vector<ClauseArray*>;
+                if (!stream) {
+                    unsat_clauses = new vector<ClauseArray *>;
 
-                // Initialise an empty vector U_t for the unsatisfied clauses found by each thread
-                for (int t = 0; t < n_threads; t++) {
-                    unsat_clauses->push_back(new ClauseArray());
-                }
+                    // Initialise an empty vector U_t for the unsatisfied clauses found by each thread
+                    for (int t = 0; t < n_threads; t++) {
+                        unsat_clauses->push_back(new ClauseArray());
+                    }
 
-                // Split clauses in n_threads batches {C_j}, in parallel through dynamic allocation
-                #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, unsat_clauses)
-                for (int t = 0; t < n_threads; t++) {
-                    for (auto clause = clauses->at(t)->begin(); clause != clauses->at(t)->end(); ++clause) {
-                        if((*clause)->is_not_satisfied(var_arr->vars)) {
-                            unsat_clauses->at(t)->push_back(*clause);
+                    // Split clauses in n_threads batches {C_j}, in parallel through dynamic allocation
+                    #pragma omp parallel for schedule(static, 1) default(none) shared(clauses, unsat_clauses, n_threads)
+                    for (int t = 0; t < n_threads; t++) {
+                        for (auto clause = clauses->at(t)->begin(); clause != clauses->at(t)->end(); ++clause) {
+                            if((*clause)->is_not_satisfied(var_arr->vars)) {
+                                unsat_clauses->at(t)->push_back(*clause);
+                            }
                         }
                     }
+                } else {
+                    unsat_clauses = clauses; // Oracle in streaming scenario only supplies unsat clauses
                 }
 
-                bool solved = true;
-                for (auto unsatClauses : *unsat_clauses) {
-                    if(!unsatClauses->empty()) {
-                        solved = false;
-                        break;
-                    }
-                }
-
-                if (solved) {
-                    // Memory management
-                    unsat_clauses->clear();
-                    delete unsat_clauses;
-
+                if (!stream && check_if_noUNSAT(unsat_clauses)) {
                     break;
                 }
 
                 // Join the n_thread MISs {I_t} into a single MIS (through the greedy_parallel_mis_join() function)
-                auto max_indep_unsat_clauses = get_mis_parallel(unsat_clauses);
+                get_mis_parallel(unsat_clauses, mis, stream);
+                statistics->avg_mis_size += mis->size(); // Update statistics
 
-                statistics->avg_mis_size += max_indep_unsat_clauses->size(); // Update statistics
+                if (resample) {
+                    resample_clauses(mis, statistics);
 
-                // In parallel and dynamically, re-sample the variables appearing in the clauses of the MIS constructed
-                #pragma omp parallel for schedule(dynamic) default(none) shared(max_indep_unsat_clauses, rbg_ensemble, statistics)
-                for (ull c = 0; c < max_indep_unsat_clauses->size(); c++) {
-                    int t_id = omp_get_thread_num(); // Get thread identifier
-
-                    // Re--sample every variable in the clause using the RBG associated with the thread t_id
-                    for (auto& l : *(max_indep_unsat_clauses->at(c))->literals) {
-                        (var_arr->vars)[l >> 1] = (rbg_ensemble[t_id])->sample();
+                    if (stream) { // Memory management - can discard clauses at this point
+                        #pragma omp parallel for schedule(dynamic) default(none) shared(mis)
+                        for (int t = 0; t < mis->size(); t++) {
+                            mis->at(t)->literals->clear();
+                            delete mis->at(t)->literals;
+                            delete mis->at(t);
+                        }
                     }
 
-                    // Update statistics
-                    statistics->n_thread_resamples.at(t_id) += (max_indep_unsat_clauses->at(c))->literals->size();
+                    mis->clear();
                 }
-
-                max_indep_unsat_clauses->clear();
-                delete max_indep_unsat_clauses; // Memory management
 
                 if (stream) {
                     break;
@@ -334,6 +309,47 @@ class SATInstance{
         // =============================================================================================================
         // ------------------------------------------------- UTILITIES -------------------------------------------------
         // =============================================================================================================
+
+        bool check_if_noUNSAT(vector<ClauseArray*>* unsat_clauses) {
+            for (auto unsatClauses : *unsat_clauses) {
+                if(!unsatClauses->empty()) {
+                    return false;
+                }
+            }
+
+            // Memory management
+            unsat_clauses->clear();
+            delete unsat_clauses;
+
+            return true;
+        }
+
+        void resample_clauses(ClauseArray* mis, Statistics* statistics) {
+            vector<RBG<default_random_engine>*> rbg_ensemble;
+
+            // Initialise ensembles of RBGs and clause_iterators...
+            for (int i = 0; i < n_threads; i++) {
+                // Get the system default random generator with a random seed
+                auto engine = new default_random_engine(std::random_device{}());
+
+                // Initialise an instance of a random boolean generator
+                rbg_ensemble.push_back(new RBG<default_random_engine>(*engine));
+            }
+
+            // In parallel and dynamically, re-sample the variables appearing in the clauses of the MIS constructed
+            #pragma omp parallel for schedule(dynamic) default(none) shared(mis, rbg_ensemble, statistics)
+            for (ull c = 0; c < mis->size(); c++) {
+                int t_id = omp_get_thread_num(); // Get thread identifier
+
+                // Re--sample every variable in the clause using the RBG associated with the thread t_id
+                for (auto& l : *(mis->at(c))->literals) {
+                    (var_arr->vars)[l >> 1] = (rbg_ensemble[t_id])->sample();
+                }
+
+                // Update statistics
+                statistics->n_thread_resamples.at(t_id) += (mis->at(c))->literals->size();
+            }
+        }
 
         // Given two Clause instances, establishes whether the two are dependent or not. The criteria of dependency is
         // having one or more variables in common between the literals of the two clauses.
@@ -359,11 +375,31 @@ class SATInstance{
             return dependent;
         }
 
-        ClauseArray* get_mis_parallel(vector<ClauseArray*>* sets) {
-            auto mis = new ClauseArray();
-            int t = 0;
+        void get_mis_parallel(vector<ClauseArray*>* sets, ClauseArray* mis, bool memory_manage) {
+            if (!mis->empty()) { // Filter out clauses which are dependent on current MIS
+                for (auto clause : *mis) {
+                    #pragma omp parallel for schedule(static, 1) default(none) shared(sets, clause, memory_manage)
+                    for (int k = 0; k < sets->size(); k++) {
+                        auto idx = sets->at(k)->begin();
+                        while (idx != sets->at(k)->end()) { // for every element y in set
+                            if (dependent_clauses(clause, *idx)) { // if y and x are dependent, remove y from set2
+                                if (memory_manage) { // Can completely discard clause
+                                    (*idx)->literals->clear();
+                                    delete (*idx)->literals;
+                                    delete (*idx);
+                                }
 
-            while (!sets->empty()) {
+                                idx = sets->at(k)->erase(idx);
+                            } else { // else maintain y in set and check the next element y' (if any) in set2
+                                ++idx;
+                            }
+                        }
+                    }
+                }
+            }
+
+            int t = 0;
+            while (!sets->empty()) { // Extend input MIS from batches until all batches are exhausted
                 t = (t + 1) % sets->size();
                 if (sets->at(t)->empty()) {
                     sets->at(t)->clear();
@@ -374,13 +410,21 @@ class SATInstance{
                 }
 
                 auto clause = sets->at(t)->at(0);
+                sets->at(t)->erase(sets->at(t)->begin());
+
                 mis->push_back(clause);
 
-                #pragma omp parallel for schedule(static, 1) default(none) shared(sets, clause)
+                #pragma omp parallel for schedule(static, 1) default(none) shared(sets, clause, memory_manage)
                 for (int k = 0; k < sets->size(); k++) {
                     auto idx = sets->at(k)->begin();
                     while (idx != sets->at(k)->end()) { // for every element y in set
                         if (dependent_clauses(clause, *idx)) { // if y and x are dependent, remove y from set2
+                            if (memory_manage) { // Can completely discard clause
+                                (*idx)->literals->clear();
+                                delete (*idx)->literals;
+                                delete (*idx);
+                            }
+
                             idx = sets->at(k)->erase(idx);
                         } else { // else maintain y in set and check the next element y' (if any) in set2
                             ++idx;

@@ -19,6 +19,8 @@ public:
     using ClauseArray = typename Clause<T>::ClauseArray;
     typedef unsigned short int t_id_T;
 
+    T n_clauses;
+
     ClauseGenerator(Clause<T>* (*getEnumeratedClause)(T, t_id_T), t_id_T t_id, T n_clauses, T base_offset, T batch_size) {
         this->getEnumeratedClause = getEnumeratedClause;
         this->t_id = t_id;
@@ -27,7 +29,7 @@ public:
         this->batch_size = batch_size;
     }
 
-    ClauseArray* yieldRandomClauseBatch() {
+    ClauseArray* yieldRandomUNSATClauseBatch(const bool* var_arr) {
         if (finished_yielding) {
             reset();
         }
@@ -44,7 +46,14 @@ public:
             auto clause = getEnumeratedClause(base_offset + c, t_id);
 
             if (clause != nullptr) {
-                clauses->push_back(clause);
+                if (clause->is_not_satisfied(var_arr)) {
+                    clauses->push_back(clause);
+                } else { // Memory management
+                    clause->literals->clear();
+                    delete clause->literals;
+                    delete clause;
+                }
+
                 n_yielded_clauses++;
             } else {
                 cerr << "WARNING: Clause generator went out of range and yielded nullptr." << endl;
@@ -61,37 +70,26 @@ public:
         return clauses;
     }
 
-    ClauseArray* yieldOrderedClauseBatch() {
+    Clause<T>* yieldNextClause() {
         if (finished_yielding) {
             reset();
         }
 
-        auto clauses = new ClauseArray();
+        auto clause = getEnumeratedClause(base_offset + n_yielded_clauses, t_id);
 
-        T n = batch_size;
-        if (n_yielded_clauses + batch_size >= n_clauses) {
-            n = n_clauses - n_yielded_clauses;
-        }
-
-        for (T i = 0; i < n; i++) {
-            auto clause = getEnumeratedClause(base_offset + n_yielded_clauses, t_id);
-
-            if (clause != nullptr) {
-                clauses->push_back(clause);
-                n_yielded_clauses++;
-            } else {
-                cerr << "WARNING: Clause generator went out of range and yielded nullptr." << endl;
-
+        if (clause != nullptr) {
+            n_yielded_clauses++;
+            if (n_yielded_clauses == n_clauses) {
                 finished_yielding = true;
-                break;
             }
-        }
 
-        if (n_yielded_clauses == n_clauses) {
+            return clause;
+        } else {
+            cerr << "WARNING: Clause generator went out of range and yielded nullptr." << endl;
+
             finished_yielding = true;
+            return nullptr;
         }
-
-        return clauses;
     }
 
     bool has_finished_yielding() {
@@ -105,7 +103,7 @@ public:
 
     private:
         Clause<T>* (*getEnumeratedClause)(T, unsigned short int);
-        T n_clauses, batch_size, base_offset;
+        T batch_size, base_offset;
         t_id_T t_id{};
 
         const uint64_t P = 9223372036854775783;
