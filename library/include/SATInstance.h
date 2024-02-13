@@ -133,9 +133,16 @@ class SATInstance{
                             continue;
                         }
 
-                        if(generators->at(t)->yieldNextClause()->is_not_satisfied(var_arr->vars)) {
+                        auto c = generators->at(t)->yieldNextClause();
+
+                        if(c->is_not_satisfied(var_arr->vars)) {
                             solved = false;
                         }
+
+                        // Memory management
+                        c->literals->clear();
+                        delete c->literals;
+                        delete c;
                     }
                 }
             }
@@ -186,7 +193,11 @@ class SATInstance{
                 clause->literals->clear();
                 delete clause->literals;
                 delete clause;
+
+                if (i % 1000 == 0) out_f->flush();
             }
+
+            out_f->flush();
         }
 
     private:
