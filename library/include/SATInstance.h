@@ -172,7 +172,9 @@ class SATInstance{
             return valid;
         }
 
-        void writeDIMACS(Clause<T>* (*getEnumeratedClause)(T, unsigned short int), ofstream* out_f) {
+        void writeDIMACS(Clause<T>* (*getEnumeratedClause)(T, unsigned short int), ull n_clauses, ofstream* out_f) {
+            this->n_clauses = n_clauses;
+            
             auto generator = new ClauseGenerator<T>(getEnumeratedClause, 0, n_clauses, 0, n_clauses);
 
             *out_f << "p cnf " << n_vars << " " << n_clauses << endl;
